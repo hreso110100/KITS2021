@@ -50,13 +50,15 @@ def train():
     images, segs = create_data_pairs("aggregated_MAJ_seg", 0, 210)
     train_ds = ArrayDataset(images, train_imtrans, segs, train_segtrans)
     train_loader = DataLoader(train_ds, batch_size=16, num_workers=8, pin_memory=torch.cuda.is_available())
+    im, seg = monai.utils.misc.first(train_loader)
+    print(im.shape, seg.shape)
     # create a validation data loader
     images, segs = create_data_pairs("aggregated_MAJ_seg", 210, 270)
     test_ds = ArrayDataset(images, test_imtrans, segs, test_segtrans)
     test_loader = DataLoader(test_ds, batch_size=1, num_workers=4, pin_memory=torch.cuda.is_available())
 
-    dice_metric = DiceMetric(include_background=False, reduction="mean", get_not_nans=False)
-    post_trans = Compose([EnsureType(), Activations(softmax=True), AsDiscrete(argmax=True)])
+    dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
+    post_trans = Compose([EnsureType(), Activations(softmax=True), AsDiscrete(threshold_values=True)])
     # create UNet, DiceLoss and Adam optimizer
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = monai.networks.nets.UNet(
@@ -65,10 +67,10 @@ def train():
         out_channels=4,
         channels=(16, 32, 64, 128, 256),
         strides=(2, 2, 2, 2),
-        num_res_units=2,
+        num_res_units=4,
     ).to(device)
-    loss_function = monai.losses.DiceLoss(include_background=False, softmax=True)
-    optimizer = torch.optim.Adam(model.parameters(), 1e-3)
+    loss_function = monai.losses.DiceLoss(include_background=True, softmax=True)
+    optimizer = torch.optim.Adam(model.parameters(), 1e-3, amsgrad=True)
 
     val_interval = 2
     best_metric = -1
@@ -77,7 +79,7 @@ def train():
     metric_values = list()
     writer = SummaryWriter()
 
-    for epoch in range(10):
+    for epoch in range(100):
         print("-" * 10)
         print(f"epoch {epoch + 1}/{10}")
         model.train()
@@ -88,7 +90,7 @@ def train():
             inputs, labels = batch_data[0].to(device), batch_data[1].to(device)
             optimizer.zero_grad()
             outputs = model(inputs)
-            loss = loss_function([post_trans(i) for i in outputs], labels)
+            loss = loss_function(outputs, labels)
             loss.backward()
             optimizer.step()
             epoch_loss += loss.item()
@@ -132,8 +134,8 @@ def train():
                 writer.add_scalar("val_mean_dice", metric, epoch + 1)
                 # plot the last model output as GIF image in TensorBoard with the corresponding image and label
                 plot_2d_or_3d_image(val_images, epoch + 1, writer, index=0, tag="image")
-                plot_2d_or_3d_image(val_labels, epoch + 1, writer, index=0, tag="label")
-                plot_2d_or_3d_image(val_outputs, epoch + 1, writer, index=0, tag="output")
+                plot_2d_or_3d_image(val_labels, epoch + 1, writer, index=0, tag="label", max_channels=4)
+                plot_2d_or_3d_image(val_outputs, epoch + 1, writer, index=0, tag="output", max_channels=4)
 
     print(f"train completed, best_metric: {best_metric:.4f} at epoch: {best_metric_epoch}")
     writer.close()
