@@ -4,8 +4,8 @@ import os
 import nibabel as nib
 import numpy as np
 
-BASE_PATH = "C:\\Users\\David\\Desktop\\kits21\\kits21\\data"
-STORE_PATH = "C:\\Users\\David\\Desktop\\data"
+BASE_PATH = "C:\\Users\\Admin\\Desktop\\kits21\\kits21\\data"
+STORE_PATH = "C:\\Users\\Admin\\Desktop\\data"
 MASKS_TO_CONVERT = ["aggregated_MAJ_seg.nii.gz", "aggregated_AND_seg.nii.gz",
                     "aggregated_OR_seg.nii.gz"]  # here add name of the mask to convert
 
