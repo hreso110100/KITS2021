@@ -82,9 +82,10 @@ def train():
     metric_values_class_3 = list()
     writer = SummaryWriter()
 
-    for epoch in range(50):
+    epoch_n = 50
+    for epoch in range(epoch_n):
         print("-" * 20)
-        print(f"epoch {epoch + 1}/{100}")
+        print(f"epoch {epoch + 1}/{epoch_n}")
         model.train()
         epoch_loss = 0
         step = 0
