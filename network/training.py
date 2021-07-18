@@ -5,7 +5,6 @@ import sys
 import monai
 import torch
 from monai.data import decollate_batch, ArrayDataset
-from monai.inferers import sliding_window_inference
 from monai.metrics import DiceMetric
 from monai.transforms import (
     Activations,
@@ -13,7 +12,7 @@ from monai.transforms import (
     Compose,
     LoadImage,
     ScaleIntensity,
-    EnsureType, AddChannel, )
+    EnsureType, AddChannel)
 from monai.visualize import plot_2d_or_3d_image
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -49,7 +48,7 @@ def train():
     # create a training data loader
     images, segs = create_data_pairs("aggregated_MAJ_seg", 0, 210)
     train_ds = ArrayDataset(images, train_imtrans, segs, train_segtrans)
-    train_loader = DataLoader(train_ds, batch_size=8, num_workers=8, pin_memory=torch.cuda.is_available())
+    train_loader = DataLoader(train_ds, batch_size=16, num_workers=8, pin_memory=torch.cuda.is_available())
     im, seg = monai.utils.misc.first(train_loader)
     print(im.shape, seg.shape)
     # create a validation data loader
@@ -58,7 +57,7 @@ def train():
     test_loader = DataLoader(test_ds, batch_size=1, num_workers=4, pin_memory=torch.cuda.is_available())
 
     dice_metric_batch = DiceMetric(include_background=False, reduction="mean_batch")
-    dice_metric = DiceMetric(include_background=False, reduction="mean_batch")
+    dice_metric = DiceMetric(include_background=False, reduction="mean")
     post_trans = Compose([EnsureType(), Activations(softmax=True), AsDiscrete(threshold_values=True)])
     # create UNet, DiceLoss and Adam optimizer
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -68,7 +67,7 @@ def train():
         out_channels=4,
         channels=(16, 32, 64, 128, 256),
         strides=(2, 2, 2, 2),
-        num_res_units=2,
+        num_res_units=4,
     ).to(device)
     loss_function = monai.losses.DiceLoss(include_background=False, softmax=True)
     optimizer = torch.optim.Adam(model.parameters(), 1e-4, amsgrad=True)
@@ -129,6 +128,7 @@ def train():
                 metric_overall = dice_metric.aggregate().item()
                 metric_overall_values.append(metric_overall)
 
+                # store metric values to tensorboard
                 writer.add_scalar("val_mean_dice", metric_overall, epoch + 1)
                 writer.add_scalar("val_dice_class_1", metric_class[0].item(), epoch + 1)
                 writer.add_scalar("val_dice_class_2", metric_class[1].item(), epoch + 1)
