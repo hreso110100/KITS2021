@@ -49,7 +49,7 @@ def train():
     # create a training data loader
     images, segs = create_data_pairs("aggregated_MAJ_seg", 0, 210)
     train_ds = ArrayDataset(images, train_imtrans, segs, train_segtrans)
-    train_loader = DataLoader(train_ds, batch_size=16, num_workers=8, pin_memory=torch.cuda.is_available())
+    train_loader = DataLoader(train_ds, batch_size=8, num_workers=8, pin_memory=torch.cuda.is_available())
     im, seg = monai.utils.misc.first(train_loader)
     print(im.shape, seg.shape)
     # create a validation data loader
@@ -57,7 +57,8 @@ def train():
     test_ds = ArrayDataset(images, test_imtrans, segs, test_segtrans)
     test_loader = DataLoader(test_ds, batch_size=1, num_workers=4, pin_memory=torch.cuda.is_available())
 
-    dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
+    dice_metric_batch = DiceMetric(include_background=False, reduction="mean_batch")
+    dice_metric = DiceMetric(include_background=False, reduction="mean_batch")
     post_trans = Compose([EnsureType(), Activations(softmax=True), AsDiscrete(threshold_values=True)])
     # create UNet, DiceLoss and Adam optimizer
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -67,21 +68,24 @@ def train():
         out_channels=4,
         channels=(16, 32, 64, 128, 256),
         strides=(2, 2, 2, 2),
-        num_res_units=4,
+        num_res_units=2,
     ).to(device)
-    loss_function = monai.losses.DiceLoss(include_background=True, softmax=True)
-    optimizer = torch.optim.Adam(model.parameters(), 1e-3, amsgrad=True)
+    loss_function = monai.losses.DiceLoss(include_background=False, softmax=True)
+    optimizer = torch.optim.Adam(model.parameters(), 1e-4, amsgrad=True)
 
     val_interval = 2
     best_metric = -1
     best_metric_epoch = -1
     epoch_loss_values = list()
-    metric_values = list()
+    metric_overall_values = list()
+    metric_values_class_1 = list()
+    metric_values_class_2 = list()
+    metric_values_class_3 = list()
     writer = SummaryWriter()
 
-    for epoch in range(100):
-        print("-" * 10)
-        print(f"epoch {epoch + 1}/{10}")
+    for epoch in range(50):
+        print("-" * 20)
+        print(f"epoch {epoch + 1}/{100}")
         model.train()
         epoch_loss = 0
         step = 0
@@ -101,7 +105,7 @@ def train():
         epoch_loss_values.append(epoch_loss)
         print(f"epoch {epoch + 1} average loss: {epoch_loss:.4f}")
 
-        if (epoch + 1) % val_interval == 0:
+        if (epoch + 1) % val_interval != 0:
             model.eval()
             with torch.no_grad():
                 val_images = None
@@ -109,29 +113,44 @@ def train():
                 val_outputs = None
                 for val_data in test_loader:
                     val_images, val_labels = val_data[0].to(device), val_data[1].to(device)
-                    roi_size = (96, 96)
-                    sw_batch_size = 4
-                    val_outputs = sliding_window_inference(val_images, roi_size, sw_batch_size, model)
+                    val_outputs = model(val_images)
                     val_outputs = [post_trans(i) for i in decollate_batch(val_outputs)]
                     # compute metric for current iteration
+                    dice_metric_batch(y_pred=val_outputs, y=val_labels)
                     dice_metric(y_pred=val_outputs, y=val_labels)
-                # aggregate the final mean dice result
-                metric = dice_metric.aggregate().item()
-                # reset the status for next validation round
-                dice_metric.reset()
-                metric_values.append(metric)
 
-                if metric > best_metric:
-                    best_metric = metric
+                # calculate metric for each class
+                metric_class = dice_metric_batch.aggregate()
+                metric_values_class_1.append(metric_class[0].item())
+                metric_values_class_2.append(metric_class[1].item())
+                metric_values_class_3.append(metric_class[2].item())
+
+                # calculate overall metric
+                metric_overall = dice_metric.aggregate().item()
+                metric_overall_values.append(metric_overall)
+
+                writer.add_scalar("val_mean_dice", metric_overall, epoch + 1)
+                writer.add_scalar("val_dice_class_1", metric_class[0].item(), epoch + 1)
+                writer.add_scalar("val_dice_class_2", metric_class[1].item(), epoch + 1)
+                writer.add_scalar("val_dice_class_3", metric_class[2].item(), epoch + 1)
+
+                if metric_overall > best_metric:
+                    best_metric = metric_overall
                     best_metric_epoch = epoch + 1
-                    torch.save(model.state_dict(), "best_metric_model_segmentation2d_array.pth")
+                    torch.save(model.state_dict(), "best_metric_model.pth")
                     print("saved new best metric model")
                 print(
                     "current epoch: {} current mean dice: {:.4f} best mean dice: {:.4f} at epoch {}".format(
-                        epoch + 1, metric, best_metric, best_metric_epoch
+                        epoch + 1, metric_overall, best_metric, best_metric_epoch
                     )
                 )
-                writer.add_scalar("val_mean_dice", metric, epoch + 1)
+                print(
+                    f"DICE FOR class 1: {metric_class[0].item()}, class 2: {metric_class[1].item()},"
+                    f" class 3: {metric_class[2].item()}")
+                # reset metrics
+                dice_metric_batch.reset()
+                dice_metric.reset()
+
                 # plot the last model output as GIF image in TensorBoard with the corresponding image and label
                 plot_2d_or_3d_image(val_images, epoch + 1, writer, index=0, tag="image")
                 plot_2d_or_3d_image(val_labels, epoch + 1, writer, index=0, tag="label", max_channels=4)
