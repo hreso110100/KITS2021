@@ -1,18 +1,21 @@
 import logging
 import os
+import random
 import sys
 
 import monai
 import torch
 from monai.data import decollate_batch, ArrayDataset
+from monai.inferers import sliding_window_inference
 from monai.metrics import DiceMetric
+from monai.networks.layers import Norm
 from monai.transforms import (
     Activations,
     AsDiscrete,
     Compose,
     LoadImage,
     ScaleIntensity,
-    EnsureType, AddChannel)
+    EnsureType, AddChannel, NormalizeIntensity)
 from monai.visualize import plot_2d_or_3d_image
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -20,6 +23,7 @@ from torch.utils.tensorboard import SummaryWriter
 DATA_PATH = "C:\\Users\\David\\Desktop\\data"
 
 
+# slicing data pairs
 def create_data_pairs(mask_name: str, slice_start: int, slice_end: int):
     images = []
     seg = []
@@ -32,33 +36,52 @@ def create_data_pairs(mask_name: str, slice_start: int, slice_end: int):
     return images, seg
 
 
+# slicing data pairs
+def create_data_pairs_random(mask_name: str):
+    images = []
+    seg = []
+
+    case = sorted(os.listdir(DATA_PATH))[random.randint(0, 209)]
+    for mask in os.listdir(f"{DATA_PATH}\\{case}\\{mask_name}"):
+        images.append(f"{DATA_PATH}\\{case}\\imaging\\imaging_{mask.split('_')[1]}")
+        seg.append(f"{DATA_PATH}\\{case}\\{mask_name}\\{mask}")
+
+    return images, seg
+
+
 def train():
     monai.config.print_config()
     logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
     # define transforms for image and segmentation
-    train_imtrans = Compose([LoadImage(image_only=True), ScaleIntensity(), AddChannel(), EnsureType()])
-    train_segtrans = Compose(
-        [LoadImage(image_only=True), EnsureType(), AddChannel(), AsDiscrete(to_onehot=True, n_classes=4)])
+    train_imtrans = Compose([LoadImage(image_only=True),
+                             ScaleIntensity(),
+                             NormalizeIntensity(nonzero=True),
+                             AddChannel(),
+                             EnsureType()])
+    train_segtrans = Compose([LoadImage(image_only=True), EnsureType(), AddChannel(),
+                              AsDiscrete(to_onehot=True, n_classes=4)])
 
-    test_imtrans = Compose([LoadImage(image_only=True), ScaleIntensity(), AddChannel(), EnsureType()])
+    test_imtrans = Compose(
+        [LoadImage(image_only=True), ScaleIntensity(), AddChannel(), EnsureType()])
     test_segtrans = Compose(
         [LoadImage(image_only=True), EnsureType(), AddChannel(), AsDiscrete(to_onehot=True, n_classes=4)])
 
     # create a training data loader
     images, segs = create_data_pairs("aggregated_MAJ_seg", 0, 210)
     train_ds = ArrayDataset(images, train_imtrans, segs, train_segtrans)
-    train_loader = DataLoader(train_ds, batch_size=16, num_workers=8, pin_memory=torch.cuda.is_available())
-    im, seg = monai.utils.misc.first(train_loader)
-    print(im.shape, seg.shape)
+    train_loader = DataLoader(train_ds, batch_size=16, num_workers=8, pin_memory=torch.cuda.is_available(),
+                              shuffle=True)
+
     # create a validation data loader
     images, segs = create_data_pairs("aggregated_MAJ_seg", 210, 270)
     test_ds = ArrayDataset(images, test_imtrans, segs, test_segtrans)
-    test_loader = DataLoader(test_ds, batch_size=1, num_workers=4, pin_memory=torch.cuda.is_available())
+    test_loader = DataLoader(test_ds, batch_size=1, num_workers=2, pin_memory=torch.cuda.is_available())
 
     dice_metric_batch = DiceMetric(include_background=False, reduction="mean_batch")
     dice_metric = DiceMetric(include_background=False, reduction="mean")
-    post_trans = Compose([EnsureType(), Activations(softmax=True), AsDiscrete(threshold_values=True)])
+    post_trans = Compose(
+        [EnsureType(), Activations(softmax=True), AsDiscrete(threshold_values=True, logit_thresh=0.6)])
     # create UNet, DiceLoss and Adam optimizer
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = monai.networks.nets.UNet(
@@ -68,32 +91,29 @@ def train():
         channels=(16, 32, 64, 128, 256),
         strides=(2, 2, 2, 2),
         num_res_units=4,
+        norm=Norm.BATCH,
     ).to(device)
-    loss_function = monai.losses.DiceLoss(include_background=False, softmax=True)
-    optimizer = torch.optim.Adam(model.parameters(), 1e-4, amsgrad=True)
+    loss_function = monai.losses.DiceCELoss(include_background=False, softmax=True)
+    optimizer = torch.optim.Adam(model.parameters(), 1e-4, amsgrad=True, betas=(0.5, 0.999))
 
-    val_interval = 2
+    val_interval = 10
     best_metric = -1
     best_metric_epoch = -1
-    epoch_loss_values = list()
-    metric_overall_values = list()
-    metric_values_class_1 = list()
-    metric_values_class_2 = list()
-    metric_values_class_3 = list()
     writer = SummaryWriter()
 
     epoch_n = 50
     for epoch in range(epoch_n):
-        print("-" * 20)
+        print("-" * 30)
         print(f"epoch {epoch + 1}/{epoch_n}")
         model.train()
         epoch_loss = 0
         step = 0
+
         for batch_data in train_loader:
             step += 1
             inputs, labels = batch_data[0].to(device), batch_data[1].to(device)
             optimizer.zero_grad()
-            outputs = model(inputs)
+            outputs = sliding_window_inference(val_images, (128, 128), 16, model, overlap=0)
             loss = loss_function(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -102,7 +122,6 @@ def train():
             print(f"{step}/{epoch_len}, train_loss: {loss.item():.4f}")
             writer.add_scalar("train_loss", loss.item(), epoch_len * epoch + step)
         epoch_loss /= step
-        epoch_loss_values.append(epoch_loss)
         print(f"epoch {epoch + 1} average loss: {epoch_loss:.4f}")
 
         if (epoch + 1) % val_interval != 0:
@@ -113,21 +132,16 @@ def train():
                 val_outputs = None
                 for val_data in test_loader:
                     val_images, val_labels = val_data[0].to(device), val_data[1].to(device)
-                    val_outputs = model(val_images)
+                    val_outputs = sliding_window_inference(val_images, (128, 128), 16, model, overlap=0)
                     val_outputs = [post_trans(i) for i in decollate_batch(val_outputs)]
-                    # compute metric for current iteration
+                    # compute metrics for current iteration
                     dice_metric_batch(y_pred=val_outputs, y=val_labels)
                     dice_metric(y_pred=val_outputs, y=val_labels)
 
                 # calculate metric for each class
                 metric_class = dice_metric_batch.aggregate()
-                metric_values_class_1.append(metric_class[0].item())
-                metric_values_class_2.append(metric_class[1].item())
-                metric_values_class_3.append(metric_class[2].item())
-
                 # calculate overall metric
                 metric_overall = dice_metric.aggregate().item()
-                metric_overall_values.append(metric_overall)
 
                 # store metric values to tensorboard
                 writer.add_scalar("val_mean_dice", metric_overall, epoch + 1)

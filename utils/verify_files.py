@@ -5,9 +5,9 @@ import numpy as np
 from PIL import Image
 from numpy import copy, stack, moveaxis
 
-DATA_PATH = "C:\\Users\\Admin\\Desktop\\data"
-STORE_PATH = "C:\\Users\\Admin\\Desktop\\masked"
-CASE = "case_00000"
+DATA_PATH = "C:\\Users\\David\\Desktop\\data"
+STORE_PATH = "C:\\Users\\David\\Desktop\\masked"
+CASE = "case_00144"
 MASK = "aggregated_MAJ_seg"
 
 if __name__ == '__main__':
@@ -22,8 +22,8 @@ if __name__ == '__main__':
         # add color to mask
         for index, mask in enumerate([mask_r, mask_g, mask_b]):
             mask[mask == 1] = int(255 - ((index + 1) * 255))  # blue
-            mask[mask == 2] = int(255 - ((index + 1) * 128))  # green
-            mask[mask == 3] = int(255 - ((index + 1) * 64))  # orange
+            mask[mask == 2] = int(255 - ((index + 1) * 128))  # green tumor
+            mask[mask == 3] = int(255 - ((index + 1) * 64))  # orange cyst
 
         stacked = stack((mask_r, mask_g, mask_b))
         stacked = moveaxis(stacked, 0, -1)  # must be channel last to open via PIL
@@ -35,7 +35,7 @@ if __name__ == '__main__':
 
         blended = Image.blend(Image.fromarray(imaging_np), Image.fromarray(stacked), alpha=0.5)
 
-        if not os.path.exists(STORE_PATH):
-            os.makedirs(STORE_PATH)
+        if not os.path.exists(f"{STORE_PATH}\\{CASE}"):
+            os.makedirs(f"{STORE_PATH}\\{CASE}")
 
-        blended.save(f"{STORE_PATH}\\merged_{mask_file.split('_')[1]}")
+        blended.save(f"{STORE_PATH}\\{CASE}\\merged_{mask_file.split('_')[1]}")

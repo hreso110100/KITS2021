@@ -12,19 +12,24 @@ if __name__ == '__main__':
 
     for case in os.listdir(BASE_PATH):
         print(f"SORTING CASE {case}")
-        dir_number = 0
+
+        class_3 = False
+        class_2 = False
 
         for mask_file in sorted(os.listdir(f"{BASE_PATH}\\{case}\\{MASK}")):
             mask_np = np.array(Image.open(f"{BASE_PATH}\\{case}\\{MASK}\\{mask_file}"), dtype=np.uint8)
-            if 2 in mask_np and 3 in mask_np:
-                dir_number = 3
+            if 3 in mask_np:
+                class_3 = True
             elif 2 in mask_np and 3 not in mask_np:
-                dir_number = 2
-            elif 2 not in mask_np and 3 in mask_np:
-                dir_number = 3
-            else:
-                dir_number = 1
+                class_2 = True
 
         # copy imaging and specific mask to sort folder
-        copy_tree(f"{BASE_PATH}\\{case}\\{MASK}", f"{STORE_PATH}\\{dir_number}\\{case}\\{MASK}")
-        copy_tree(f"{BASE_PATH}\\{case}\\imaging", f"{STORE_PATH}\\{dir_number}\\{case}\\imaging")
+        if class_3:
+            copy_tree(f"{BASE_PATH}\\{case}\\{MASK}", f"{STORE_PATH}\\{3}\\{case}\\{MASK}")
+            copy_tree(f"{BASE_PATH}\\{case}\\imaging", f"{STORE_PATH}\\{3}\\{case}\\imaging")
+        elif class_2:
+            copy_tree(f"{BASE_PATH}\\{case}\\{MASK}", f"{STORE_PATH}\\{2}\\{case}\\{MASK}")
+            copy_tree(f"{BASE_PATH}\\{case}\\imaging", f"{STORE_PATH}\\{2}\\{case}\\imaging")
+        else:
+            copy_tree(f"{BASE_PATH}\\{case}\\{MASK}", f"{STORE_PATH}\\{1}\\{case}\\{MASK}")
+            copy_tree(f"{BASE_PATH}\\{case}\\imaging", f"{STORE_PATH}\\{1}\\{case}\\imaging")
