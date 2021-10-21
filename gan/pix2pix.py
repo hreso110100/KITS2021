@@ -48,7 +48,7 @@ class GAN:
         self.data_loader = Loader(shape=self.file_shape)
 
         self.losses = []
-        self.coverages = []
+        self.metric = []
 
         # Building losses
         self.loss_mse = MSELoss()
@@ -70,41 +70,6 @@ class GAN:
             # self.generator.apply(weights_init)
             self.optimizer_g = Adam(params=self.generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
 
-    def prepare_sequences(self, batch_size=1, merged=False) -> tuple:
-        """
-        Preparing sequences of real and corrupted data.
-        :return: Tuple of real and corrupted data.
-        """
-
-        real_data = []
-        corrupted_data = []
-
-        for _, (real, corrupted) in enumerate(self.data_loader.load_batch(batch_size)):
-            real_data.append(real[0])
-            corrupted_data.append(corrupted[0])
-
-        return tensor(real_data, device=self.device).float(), tensor(corrupted_data, device=self.device).float()
-
-    def sample_train_images(self, epoch, batch_size):
-        """
-        Continuous saving of data during training with coverage calculations.
-        :param epoch: Current epoch.
-        :param batch_size: Batch size.
-        :return Coverage of users by drones.
-        """
-
-        real, corrupted = self.prepare_sequences(merged=True)
-        fake = self.generator(corrupted)
-
-        fake = fake.detach().cpu().numpy().swapaxes(1, 2).reshape(self.file_rows, self.channels)
-        real = real.detach().cpu().numpy().swapaxes(1, 2).reshape(self.file_rows, self.channels)
-        corrupted = corrupted.detach().cpu().numpy().swapaxes(1, 2).reshape(self.file_rows, self.channels)
-
-        self.data_loader.save_data(epoch, batch_size, corrupted, real, fake)
-        self.markers.create_map(data_list=[real, fake], epoch=epoch)
-
-        return self.markers.calculate_coverage(data=[real, fake])
-
     def train(self, epochs: int, batch_size: int, sample_interval: int):
         start_time = datetime.datetime.now()
 
@@ -113,7 +78,7 @@ class GAN:
         fake = tensor(np.zeros((batch_size,) + self.d_patch), requires_grad=False, device=self.device)
 
         for epoch in range(epochs):
-            real_A, real_B = self.prepare_sequences(batch_size, merged=True)
+            real_A, real_B = self.prepare_sequences(batch_size)
             fake_A = self.generator(real_B)
 
             #  Train Generator
@@ -159,16 +124,49 @@ class GAN:
             print(f"[Epoch {epoch}/{epochs}] [D loss: {loss_D}] [G loss: {loss_G}] time: {elapsed_time}")
 
             if epoch % sample_interval == 0:
-                coverage = self.sample_train_images(epoch, batch_size)
-                self.coverages.append(coverage)
-                print(f"[Coverage: {coverage}]")
+                self.sample_train_images(epoch, batch_size)
+                # self.metric.append(metric)
+                # print(f"[Movement consistency metric: {metric}]")
 
         # measure metrics
         self.plot_loss(self.losses)
-        self.plot_coverage(self.coverages)
 
-        self.generate_samples(100)
+        # self.generate_samples(10)
         self.save_models([self.discriminator, self.generator, self.optimizer_d, self.optimizer_g])
+
+    def prepare_sequences(self, batch_size=1) -> tuple:
+        """
+        Preparing sequences of real and corrupted data.
+        :return: Tuple of real and corrupted data.
+        """
+
+        real_data = []
+        corrupted_data = []
+
+        for _, (real, corrupted) in enumerate(self.data_loader.load_batch(batch_size)):
+            real_data.append(real[0])
+            corrupted_data.append(corrupted[0])
+
+        return tensor(real_data, device=self.device).float(), tensor(corrupted_data, device=self.device).float()
+
+    def sample_train_images(self, epoch, batch_size):
+        """
+        Continuous saving of data during training with coverage calculations.
+        :param epoch: Current epoch.
+        :param batch_size: Batch size.
+        :return Coverage of users by drones.
+        """
+
+        real, corrupted = self.prepare_sequences()
+        fake = self.generator(corrupted)
+
+        fake = fake.detach().cpu().numpy().reshape(self.file_rows, self.channels)
+        real = real.detach().cpu().numpy().reshape(self.file_rows, self.channels)
+        corrupted = corrupted.detach().cpu().numpy().reshape(self.file_rows, self.channels)
+
+        self.data_loader.save_data(epoch, batch_size, corrupted, real, fake)
+
+        # TODO calculate movement consistency metric
 
     def plot_loss(self, loss_list: list):
         """
@@ -195,44 +193,23 @@ class GAN:
         plt.xlabel("epochs")
         plt.show()
 
-    def plot_coverage(self, coverage_list: list):
-        """
-        Plot coverage of drones.
-        """
-
-        _, bins, _ = plt.hist([round(x, 2) for x in coverage_list], bins=5, alpha=0.65, edgecolor='k')
-        plt.axvline(np.array(coverage_list).mean(), color='k', linestyle='dashed', linewidth=1)
-        plt.xticks(bins)
-        plt.title("Pokrytie testovacích vzoriek")
-        plt.xlabel("Pokrytie")
-        plt.ylabel("Počet vzoriek")
-
-        min_ylim, max_ylim = plt.ylim()
-        plt.text(np.array(coverage_list).mean() * 1.005, max_ylim * 0.9,
-                 'Priemer: {:.2f}'.format(np.array(coverage_list).mean()))
-
-        plt.savefig(self.samples_folder)
-        plt.show()
-
-    def generate_samples(self, samples: int):
-        """
-        Generate N number of fake trajectories and store them on disc.
-        :param samples: Number of samples to generate
-        """
-        for i in range(samples):
-            print(f"LOGGER: Generating sample {i + 1}/{samples}.")
-            real, corrupted = self.prepare_sequences(merged=True)
-            fake = self.generator(corrupted)
-
-            fake = fake.detach().cpu().numpy().swapaxes(1, 2).reshape(self.file_rows, self.channels)
-            real = real.detach().cpu().numpy().swapaxes(1, 2).reshape(self.file_rows, self.channels)
-
-            self.markers.create_map(data_list=[real, fake], epoch=i, save_location=self.samples_folder)
-
-            coverage = self.markers.calculate_coverage([real, fake])
-            self.coverages.append(coverage)
-
-        self.plot_coverage(self.coverages)
+    # def generate_samples(self, samples: int):
+    #     """
+    #     Generate N number of fake trajectories and store them on disc.
+    #     :param samples: Number of samples to generate
+    #     """
+    #     for i in range(samples):
+    #         print(f"LOGGER: Generating sample {i + 1}/{samples}.")
+    #         real, corrupted = self.prepare_sequences()
+    #         fake = self.generator(corrupted)
+    #
+    #         fake = fake.detach().cpu().numpy().reshape(self.file_rows, self.channels)
+    #         real = real.detach().cpu().numpy().reshape(self.file_rows, self.channels)
+    #
+    #         coverage = self.markers.calculate_coverage([real, fake])
+    #         self.coverages.append(coverage)
+    #
+    #     self.plot_coverage(self.coverages)
 
     def save_models(self, models: list):
         """

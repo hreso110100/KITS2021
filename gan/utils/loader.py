@@ -4,11 +4,12 @@ import random
 import numpy as np
 import yaml
 from PIL import Image
+from torch import tensor
 
 
 class Loader:
 
-    def __init__(self):
+    def __init__(self, shape: tuple):
         with open(f"../config/model_config.yaml", 'r') as file:
             self.config = yaml.load(file, Loader=yaml.FullLoader)
 
@@ -19,6 +20,7 @@ class Loader:
             os.makedirs(self.generated_folder)
 
         self.case_list = os.listdir(self.dataset_folder)
+        self.shape = shape
 
     def load_batch(self, batch_size=1):
         """
@@ -29,7 +31,7 @@ class Loader:
         # Selecting random cases
         chosen_cases = np.random.choice(len(self.case_list), batch_size, replace=False)
         for _, chosen_index in enumerate(chosen_cases):
-            batch = []
+            batch_img = []
             batch_noise = []
             case_folder = self.case_list[chosen_index]
             img_list = os.listdir(f"{self.dataset_folder}\\{case_folder}\\imaging")
@@ -57,10 +59,37 @@ class Loader:
 
             noise_mask = np.random.choice([0, 1], size=(512, 512, 3), p=[.9, .1]) * concatenated_mask
 
-            batch.append(concatenated_img)
-            batch.append()
-            yield np.array(batch), np.array(noise_mask)
+            batch_img.append(concatenated_img.reshape(self.shape))
+            batch_noise.append(noise_mask.reshape(self.shape))
 
-if __name__ == '__main__':
-    l = Loader()
-    l.load_batch(1)
+            yield np.array(batch_img), np.array(batch_noise)
+
+    def save_data(self, epoch: int, batch: int, corrupted: tensor, real: tensor, fake: tensor):
+        """
+        Saving data.
+        :param epoch: Number of epochs.
+        :param batch: Size of batch.
+        :param corrupted: Corrupted data.
+        :param real: Real data.
+        :param fake: Generated data.
+        """
+
+        self.save(epoch, batch, corrupted, self.generated_folder, "corrupted")
+        self.save(epoch, batch, real, self.generated_folder, "real")
+        self.save(epoch, batch, fake, self.generated_folder, "generated")
+
+    def save(self, epoch: int, batch: int, data: tensor, folder: str, file_name: str):
+        """
+        Base method for saving.
+        :param epoch: Number of epochs.
+        :param batch: Number of batches.
+        :param data: Data to save.
+        :param folder: Folder where data will be saved.
+        :param file_name: Name of the final file. File will be PNG by default.
+        """
+
+        data = (data * 255).astype(np.uint8)
+
+        # storing each channel as separate image
+        for index in range(data.shape[-1]):
+            Image.fromarray(data[:, :, index]).save(f"{folder}\\{str(epoch)}_{str(batch)}\\{file_name}_{index}.png")
