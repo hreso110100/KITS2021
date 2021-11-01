@@ -1,6 +1,6 @@
 from torch import nn, cat
-from torch.nn import Upsample, Conv2d, Sequential, LeakyReLU, Dropout, Sigmoid, ZeroPad2d, ReLU, BatchNorm2d, \
-    ConvTranspose2d
+from torch.nn import Conv2d, Sequential, Dropout, BatchNorm2d, \
+    ConvTranspose2d, Tanh, LeakyReLU, ReLU
 
 
 class UNetDown(nn.Module):
@@ -9,11 +9,11 @@ class UNetDown(nn.Module):
 
         self.model = Sequential(
             Conv2d(input_size, output_filters, kernel_size=3, padding=1, stride=2, bias=False),
-            LeakyReLU(0.2)
         )
-
         if normalize:
             self.model.add_module("BatchNorm2d", BatchNorm2d(output_filters, momentum=0.8))
+
+        self.model.add_module("LeakyReLU", LeakyReLU(0.2, inplace=True))
 
     def forward(self, x):
         return self.model(x)
@@ -24,9 +24,9 @@ class UNetUp(nn.Module):
         super(UNetUp, self).__init__()
 
         self.model = Sequential(
-            ConvTranspose2d(input_size, output_filters, 4, 2, 1, bias=False),
-            ReLU(inplace=True),
+            ConvTranspose2d(input_size, output_filters, kernel_size=3, stride=2, padding=1, output_padding=1,bias=False),
             BatchNorm2d(output_filters, momentum=0.8),
+            ReLU(inplace=True),
         )
 
         if dropout:
@@ -68,10 +68,8 @@ class Generator(nn.Module):
         self.up7 = UNetUp(256, 64)
 
         self.last = nn.Sequential(
-            Upsample(scale_factor=(2, 1)),
-            ZeroPad2d((1, 0, 1, 0)),
-            Conv2d(128, output_channels, kernel_size=3, padding=1),
-            Sigmoid(),
+            ConvTranspose2d(128, output_channels, kernel_size=3, stride=2, padding=1, output_padding=1),
+            Tanh(),
         )
 
     def forward(self, x):
@@ -80,9 +78,9 @@ class Generator(nn.Module):
         d3 = self.down3(d2)
         d4 = self.down4(d3)
         d5 = self.down5(d4)
-        d6 = self.down5(d5)
-        d7 = self.down5(d6)
-        d8 = self.down5(d7)
+        d6 = self.down6(d5)
+        d7 = self.down7(d6)
+        d8 = self.down8(d7)
 
         u1 = self.up1(d8, d7)
         u2 = self.up2(u1, d6)

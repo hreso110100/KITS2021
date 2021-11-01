@@ -33,9 +33,9 @@ if __name__ == '__main__':
                 # check if mask is empty, if yes ignore it
                 if np.sum(img_slice) == 0:
                     continue
-                Image.fromarray(img_slice).convert("L").resize((512, 512)).save(
+                Image.fromarray(img_slice).convert("L").resize((256, 256), Image.LANCZOS).save(
                     f"{STORE_PATH}\\{case}\\{file.split('.')[0]}\\mask_part{slice_n}.png")
 
                 imaging_slice = imaging_data[slice_n, :, :]
-                Image.fromarray(imaging_slice).convert("L").resize((512, 512)).save(
+                Image.fromarray(imaging_slice).convert("L").resize((256, 256), Image.LANCZOS).save(
                     f"{STORE_PATH}\\{case}\\imaging\\imaging_part{slice_n}.png")

@@ -22,6 +22,7 @@ from torch.utils.tensorboard import SummaryWriter
 from gan.discriminator import Discriminator
 from gan.generator import Generator
 from gan.utils.loader import Loader
+from gan.utils.loader_edge import LoaderEdge
 
 
 class GAN:
@@ -29,33 +30,28 @@ class GAN:
     def __init__(self, load_models=False, models_path=""):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        with open(f"../src/config/model_config.yml", 'r') as file:
+        with open(f"C:\\Users\\David\\PycharmProjects\\KITS2021\\gan\\config\\model_config.yaml", 'r') as file:
             self.config = yaml.load(file, Loader=yaml.FullLoader)
 
-        self.samples_folder = self.config["folders"]["generated_images"]
+        self.samples_folder = self.config["folders"]["generated"]
 
         if not os.path.exists(self.samples_folder):
             os.makedirs(self.samples_folder)
 
-        # default `log_dir` is "runs" - we'll be more specific here
         self.writer = SummaryWriter('../tensorboard')
 
-        self.file_rows = 512
-        self.file_cols = 512
+        self.file_rows = 256
+        self.file_cols = 256
         self.channels = 3
         self.file_shape = (self.channels, self.file_rows, self.file_cols)
-
-        self.data_loader = Loader(shape=self.file_shape)
-
-        self.losses = []
-        self.metric = []
+        self.data_loader = LoaderEdge(shape=self.file_shape)
 
         # Building losses
         self.loss_mse = MSELoss()
         self.loss_l1 = L1Loss()
 
         # Building discriminator
-        self.d_patch = (1, int(self.file_rows // 2 ** 4), int(self.file_rows // 2 ** 4))
+        self.d_patch = (1, 30, 30)
 
         # Choosing whether to load or create new models
         if load_models:
@@ -120,16 +116,15 @@ class GAN:
 
             elapsed_time = datetime.datetime.now() - start_time
 
-            self.losses.append({"D": loss_D, "G": loss_G})
+            # measure losses
             print(f"[Epoch {epoch}/{epochs}] [D loss: {loss_D}] [G loss: {loss_G}] time: {elapsed_time}")
+            self.writer.add_scalar('Training loss', loss_G, epoch)
+            self.writer.add_scalar('Training loss', loss_D, epoch)
 
             if epoch % sample_interval == 0:
-                self.sample_train_images(epoch, batch_size)
+                self.sample_train_images(epoch)
                 # self.metric.append(metric)
                 # print(f"[Movement consistency metric: {metric}]")
-
-        # measure metrics
-        self.plot_loss(self.losses)
 
         # self.generate_samples(10)
         self.save_models([self.discriminator, self.generator, self.optimizer_d, self.optimizer_g])
@@ -149,49 +144,24 @@ class GAN:
 
         return tensor(real_data, device=self.device).float(), tensor(corrupted_data, device=self.device).float()
 
-    def sample_train_images(self, epoch, batch_size):
+    def sample_train_images(self, epoch):
         """
         Continuous saving of data during training with coverage calculations.
         :param epoch: Current epoch.
-        :param batch_size: Batch size.
         :return Coverage of users by drones.
         """
 
         real, corrupted = self.prepare_sequences()
         fake = self.generator(corrupted)
 
-        fake = fake.detach().cpu().numpy().reshape(self.file_rows, self.channels)
-        real = real.detach().cpu().numpy().reshape(self.file_rows, self.channels)
-        corrupted = corrupted.detach().cpu().numpy().reshape(self.file_rows, self.channels)
+        fake = fake.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
+        real = real.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
+        corrupted = corrupted.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
 
-        self.data_loader.save_data(epoch, batch_size, corrupted, real, fake)
+        # visualize trained data and store them
+        self.data_loader.save_data(epoch, corrupted, real, fake)
 
         # TODO calculate movement consistency metric
-
-    def plot_loss(self, loss_list: list):
-        """
-        Plot losses of discriminator and generator.
-        """
-
-        plt.figure(figsize=(12, 5))
-        loss_G = []
-        loss_D = []
-
-        for loss in loss_list:
-            if self.device == "cuda":
-                loss_G.append(loss["G"].cpu().detach().numpy())
-                loss_D.append(loss["D"].cpu().detach().numpy())
-            else:
-                loss_G.append(loss["G"].detach().numpy())
-                loss_D.append(loss["D"].detach().numpy())
-
-        plt.plot(loss_G, label="Generator")
-        plt.plot(loss_D, label="Discriminator")
-
-        plt.title("Discriminator and generator loss")
-        plt.ylabel("loss")
-        plt.xlabel("epochs")
-        plt.show()
 
     # def generate_samples(self, samples: int):
     #     """
@@ -203,8 +173,8 @@ class GAN:
     #         real, corrupted = self.prepare_sequences()
     #         fake = self.generator(corrupted)
     #
-    #         fake = fake.detach().cpu().numpy().reshape(self.file_rows, self.channels)
-    #         real = real.detach().cpu().numpy().reshape(self.file_rows, self.channels)
+    #         fake = fake.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
+    #         real = real.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
     #
     #         coverage = self.markers.calculate_coverage([real, fake])
     #         self.coverages.append(coverage)
@@ -255,3 +225,8 @@ class GAN:
 
         print("LOGGER: Models successfully loaded.")
         return discriminator, generator, optimizer_d, optimizer_g
+
+
+if __name__ == '__main__':
+    model = GAN()
+    model.train(20000, 8, 100)

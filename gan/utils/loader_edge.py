@@ -1,13 +1,13 @@
 import os
 import random
-
 import numpy as np
 import yaml
 from PIL import Image
 from torch import tensor
+from skimage import feature
 
 
-class Loader:
+class LoaderEdge:
 
     def __init__(self, shape: tuple):
         with open(f"C:\\Users\\David\\PycharmProjects\\KITS2021\\gan\\config\\model_config.yaml", 'r') as file:
@@ -40,27 +40,27 @@ class Loader:
 
             try:
                 img_tuple = list()
-                mask_tuple = list()
+                noise_tuple = list()
                 for i in range(0, 3):
-                    img_tuple.append(np.array(
+                    img = np.array(
                         Image.open(f"{self.dataset_folder}\\{case_folder}\\imaging\\{img_list[chosen_img + i]}"),
-                        dtype=np.uint8))
-                    mask_tuple.append(np.array(
-                        Image.open(
-                            f"{self.dataset_folder}\\{case_folder}\\aggregated_MAJ_seg\\mask_{img_list[chosen_img + i].split('_')[1]}"),
-                        dtype=np.uint8))
+                        dtype=np.uint8)
+                    img_tuple.append(img)
+                    edges = feature.canny(img).astype(np.uint8)
+                    noise_tuple.append(np.where(edges == 1, 255, edges))
             except FileNotFoundError:
                 print(f"LOGGER: Cannot load case {self.case_list[chosen_index]}.")
                 continue
 
-            # min max scaling of images
-            concatenated_img = np.dstack(img_tuple) / 255.0
-            concatenated_mask = np.dstack(mask_tuple) / 3.0
+            # min max scaling of images to range -1 and 1
+            concatenated_img = ((np.dstack(img_tuple) / 255.0) * 2) - 1
+            concatenated_noise = ((np.dstack(noise_tuple) / 255.0) * 2) - 1
 
-            noise_mask = np.random.choice([0, 1], size=(512, 512, 3), p=[.3, .7]) * concatenated_mask
+            # adding noise
+            concatenated_noise *= np.zeros((256, 256, 3))
 
             batch_img.append(concatenated_img.reshape(self.shape))
-            batch_noise.append(noise_mask.reshape(self.shape))
+            batch_noise.append(concatenated_noise.reshape(self.shape))
 
             yield np.array(batch_img), np.array(batch_noise)
 
@@ -86,10 +86,7 @@ class Loader:
         :param file_name: Name of the final file. File will be PNG by default.
         """
 
-        if file_name == "corrupted":
-            data = (data * 3).astype(np.uint8)
-        else:
-            data = (data * 255).astype(np.uint8)
+        data = (((data + 1) / 2) * 255).astype(np.uint8)
 
         # storing each channel as separate image
         if not os.path.exists(f"{folder}/{str(epoch)}"):
