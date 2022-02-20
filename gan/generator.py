@@ -8,7 +8,7 @@ class UNetDown(nn.Module):
         super(UNetDown, self).__init__()
 
         self.model = Sequential(
-            Conv2d(input_size, output_filters, kernel_size=3, padding=1, stride=2, bias=False),
+            Conv2d(input_size, output_filters, kernel_size=4, padding=1, stride=2, bias=False),
         )
         if normalize:
             self.model.add_module("BatchNorm2d", BatchNorm2d(output_filters, momentum=0.8))
@@ -24,7 +24,7 @@ class UNetUp(nn.Module):
         super(UNetUp, self).__init__()
 
         self.model = Sequential(
-            ConvTranspose2d(input_size, output_filters, kernel_size=3, stride=2, padding=1, output_padding=1,bias=False),
+            ConvTranspose2d(input_size, output_filters, kernel_size=4, stride=2, padding=1,bias=False),
             BatchNorm2d(output_filters, momentum=0.8),
             ReLU(inplace=True),
         )
@@ -45,7 +45,7 @@ Implementation based on UNet generator
 
 
 class Generator(nn.Module):
-    def __init__(self, file_shape: tuple, output_channels=3):
+    def __init__(self, file_shape: tuple):
         super(Generator, self).__init__()
 
         # DownSampling
@@ -68,7 +68,7 @@ class Generator(nn.Module):
         self.up7 = UNetUp(256, 64)
 
         self.last = nn.Sequential(
-            ConvTranspose2d(128, output_channels, kernel_size=3, stride=2, padding=1, output_padding=1),
+            ConvTranspose2d(128, file_shape[0], kernel_size=4, stride=2, padding=1),
             Tanh(),
         )
 

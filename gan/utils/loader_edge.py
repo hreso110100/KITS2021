@@ -36,12 +36,12 @@ class LoaderEdge:
             case_folder = self.case_list[chosen_index]
             img_list = os.listdir(f"{self.dataset_folder}\\{case_folder}\\imaging")
             # this represent index of the first image to be concatenated
-            chosen_img = random.randint(0, len(img_list) - 3)
+            chosen_img = random.randint(0, len(img_list) - self.shape[0])
 
             try:
                 img_tuple = list()
                 noise_tuple = list()
-                for i in range(0, 3):
+                for i in range(0, self.shape[0]):
                     img = np.array(
                         Image.open(f"{self.dataset_folder}\\{case_folder}\\imaging\\{img_list[chosen_img + i]}"),
                         dtype=np.uint8)
@@ -57,7 +57,7 @@ class LoaderEdge:
             concatenated_noise = ((np.dstack(noise_tuple) / 255.0) * 2) - 1
 
             # adding noise
-            concatenated_noise *= np.zeros((256, 256, 3))
+            concatenated_noise *= np.random.choice([-1, 1], size=(256, 256, 3), p=[.2, .8])
 
             batch_img.append(concatenated_img.reshape(self.shape))
             batch_noise.append(concatenated_noise.reshape(self.shape))

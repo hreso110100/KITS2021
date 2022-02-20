@@ -1,5 +1,4 @@
 import os
-import random
 
 import numpy as np
 import yaml
@@ -32,49 +31,45 @@ class Loader:
         chosen_cases = np.random.choice(len(self.case_list), batch_size, replace=False)
         for _, chosen_index in enumerate(chosen_cases):
             batch_img = []
-            batch_noise = []
+            batch_mask = []
+
+            # load case folder and select one framer
             case_folder = self.case_list[chosen_index]
             img_list = os.listdir(f"{self.dataset_folder}\\{case_folder}\\imaging")
-            # this represent index of the first image to be concatenated
-            chosen_img = random.randint(0, len(img_list) - 3)
+            img_list_index = np.random.choice(len(img_list), 1, replace=False)
 
             try:
-                img_tuple = list()
-                mask_tuple = list()
-                for i in range(0, 3):
-                    img_tuple.append(np.array(
-                        Image.open(f"{self.dataset_folder}\\{case_folder}\\imaging\\{img_list[chosen_img + i]}"),
-                        dtype=np.uint8))
-                    mask_tuple.append(np.array(
-                        Image.open(
-                            f"{self.dataset_folder}\\{case_folder}\\aggregated_MAJ_seg\\mask_{img_list[chosen_img + i].split('_')[1]}"),
-                        dtype=np.uint8))
+                loaded_img = np.array(
+                    Image.open(f"{self.dataset_folder}\\{case_folder}\\imaging\\{img_list[img_list_index]}"),
+                    dtype=np.uint8)
+                loaded_mask = np.array(
+                    Image.open(
+                        f"{self.dataset_folder}\\{case_folder}\\aggregated_MAJ_seg\\mask_{img_list[img_list_index].split('_')[1]}"),
+                    dtype=np.uint8)
             except FileNotFoundError:
                 print(f"LOGGER: Cannot load case {self.case_list[chosen_index]}.")
                 continue
 
             # min max scaling of images
-            concatenated_img = np.dstack(img_tuple) / 255.0
-            concatenated_mask = np.dstack(mask_tuple) / 3.0
+            loaded_img = loaded_img / 255.0
+            loaded_mask = loaded_mask / 3.0
 
-            noise_mask = np.random.choice([0, 1], size=(512, 512, 3), p=[.3, .7]) * concatenated_mask
+            batch_img.append(loaded_img.reshape(self.shape))
+            batch_mask.append(loaded_mask.reshape(self.shape))
 
-            batch_img.append(concatenated_img.reshape(self.shape))
-            batch_noise.append(noise_mask.reshape(self.shape))
+            yield np.array(batch_img), np.array(batch_mask)
 
-            yield np.array(batch_img), np.array(batch_noise)
-
-    def save_data(self, epoch: int, corrupted: tensor, real: tensor, fake: tensor):
+    def save_data(self, epoch: int, mask: tensor, imaging: tensor, fake: tensor):
         """
         Saving data.
         :param epoch: Number of epochs.
-        :param corrupted: Corrupted data.
-        :param real: Real data.
+        :param mask: Corrupted data.
+        :param imaging: Real data.
         :param fake: Generated data.
         """
 
-        self.save(epoch, corrupted, self.generated_folder, "corrupted")
-        self.save(epoch, real, self.generated_folder, "real")
+        self.save(epoch, mask, self.generated_folder, "mask")
+        self.save(epoch, imaging, self.generated_folder, "imaging")
         self.save(epoch, fake, self.generated_folder, "generated")
 
     def save(self, epoch: int, data: tensor, folder: str, file_name: str):
@@ -86,7 +81,7 @@ class Loader:
         :param file_name: Name of the final file. File will be PNG by default.
         """
 
-        if file_name == "corrupted":
+        if file_name == "mask":
             data = (data * 3).astype(np.uint8)
         else:
             data = (data * 255).astype(np.uint8)

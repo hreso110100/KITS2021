@@ -5,9 +5,9 @@ import numpy as np
 from PIL import Image
 
 BASE_PATH = "C:\\Users\\David\\Desktop\\sliced_kits"
-STORE_PATH = "C:\\Users\\David\\Desktop\\only_tumors_kits"
+STORE_PATH = "C:\\Users\\David\\Desktop\\only_kidneys_kits"
 MASK = "aggregated_MAJ_seg"
-CLASS = 2
+CLASS = 1
 
 
 def create_dir(dir_name: str):
@@ -23,9 +23,11 @@ if __name__ == '__main__':
 
         for mask_file in sorted(os.listdir(f"{BASE_PATH}\\{case}\\{MASK}")):
             mask_np = np.array(Image.open(f"{BASE_PATH}\\{case}\\{MASK}\\{mask_file}"), dtype=np.uint8)
-            # if CLASS in mask_np and 2 not in mask_np and 3 not in mask_np:
-            if CLASS in mask_np:
-                copyfile(f"{BASE_PATH}\\{case}\\{MASK}\\{mask_file}",
-                         f"{STORE_PATH}\\{case}\\{MASK}\\{mask_file}")
-                copyfile(f"{BASE_PATH}\\{case}\\imaging\\imaging_{mask_file.split('_')[1]}",
-                         f"{STORE_PATH}\\{case}\\imaging\\imaging_{mask_file.split('_')[1]}")
+            if CLASS in mask_np and 2 not in mask_np and 3 not in mask_np:
+                # if CLASS in mask_np:
+                image_np = np.array(Image.open(f"{BASE_PATH}\\{case}\\imaging\\imaging_{mask_file.split('_')[1]}"),
+                                    dtype=np.uint8)
+                Image.fromarray(image_np).convert("L").resize((256, 256)).save(
+                    f"{STORE_PATH}\\{case}\\imaging\\imaging_{mask_file.split('_')[1]}")
+                Image.fromarray(mask_np).convert("L").resize((256, 256)).save(
+                    f"{STORE_PATH}\\{case}\\{MASK}\\{mask_file}")

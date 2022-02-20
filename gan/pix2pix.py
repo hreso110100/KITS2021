@@ -89,7 +89,7 @@ class GAN:
             loss_l1 = self.loss_l1(fake_A, real_A).double()
 
             # Total loss (100 is weight of L1 loss)
-            loss_G = loss_mse + (100 * loss_l1)
+            loss_G = loss_mse + (50 * loss_l1)
 
             loss_G.backward()
             self.optimizer_g.step()
@@ -126,7 +126,7 @@ class GAN:
                 # self.metric.append(metric)
                 # print(f"[Movement consistency metric: {metric}]")
 
-        # self.generate_samples(10)
+        # self.generate_samples(30)
         self.save_models([self.discriminator, self.generator, self.optimizer_d, self.optimizer_g])
 
     def prepare_sequences(self, batch_size=1) -> tuple:
@@ -229,4 +229,4 @@ class GAN:
 
 if __name__ == '__main__':
     model = GAN()
-    model.train(20000, 8, 100)
+    model.train(10000, 8, 100)
