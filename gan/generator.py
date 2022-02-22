@@ -1,19 +1,21 @@
 from torch import nn, cat
-from torch.nn import Conv2d, Sequential, Dropout, BatchNorm2d, \
-    ConvTranspose2d, Tanh, LeakyReLU, ReLU
+from torch.nn import Conv2d, Sequential, Dropout, ConvTranspose2d, LeakyReLU, ReLU, InstanceNorm2d, Tanh
 
 
 class UNetDown(nn.Module):
-    def __init__(self, input_size: int, output_filters: int, normalize=True):
+    def __init__(self, input_size: int, output_filters: int, normalize=True, dropout=0.0):
         super(UNetDown, self).__init__()
 
         self.model = Sequential(
-            Conv2d(input_size, output_filters, kernel_size=4, padding=1, stride=2, bias=False),
+            Conv2d(input_size, output_filters, kernel_size=4, stride=2, padding=1, bias=False),
         )
         if normalize:
-            self.model.add_module("BatchNorm2d", BatchNorm2d(output_filters, momentum=0.8))
+            self.model.add_module("InstanceNorm2d", InstanceNorm2d(output_filters))
 
         self.model.add_module("LeakyReLU", LeakyReLU(0.2, inplace=True))
+
+        if dropout:
+            self.model.add_module("Dropout", Dropout(dropout))
 
     def forward(self, x):
         return self.model(x)
@@ -24,8 +26,8 @@ class UNetUp(nn.Module):
         super(UNetUp, self).__init__()
 
         self.model = Sequential(
-            ConvTranspose2d(input_size, output_filters, kernel_size=4, stride=2, padding=1,bias=False),
-            BatchNorm2d(output_filters, momentum=0.8),
+            ConvTranspose2d(input_size, output_filters, kernel_size=4, stride=2, padding=1, bias=False),
+            InstanceNorm2d(output_filters),
             ReLU(inplace=True),
         )
 

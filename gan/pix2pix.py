@@ -21,7 +21,6 @@ from torch.utils.tensorboard import SummaryWriter
 #             torch.nn.init.zeros_(model.bias)
 from gan.discriminator import Discriminator
 from gan.generator import Generator
-from gan.utils.loader import Loader
 from gan.utils.loader_edge import LoaderEdge
 
 
@@ -42,7 +41,7 @@ class GAN:
 
         self.file_rows = 256
         self.file_cols = 256
-        self.channels = 3
+        self.channels = 1
         self.file_shape = (self.channels, self.file_rows, self.file_cols)
         self.data_loader = LoaderEdge(shape=self.file_shape)
 
@@ -51,7 +50,7 @@ class GAN:
         self.loss_l1 = L1Loss()
 
         # Building discriminator
-        self.d_patch = (1, 30, 30)
+        self.d_patch = (1, 16, 16)
 
         # Choosing whether to load or create new models
         if load_models:
@@ -59,12 +58,12 @@ class GAN:
         else:
             self.discriminator = Discriminator(self.file_shape).to(self.device)
             # self.discriminator.apply(weights_init)
-            self.optimizer_d = Adam(params=self.discriminator.parameters(), lr=0.0002, betas=(0.5, 0.999))
+            self.optimizer_d = Adam(params=self.discriminator.parameters(), lr=0.0001, betas=(0.5, 0.999))
 
             # Building generator
             self.generator = Generator(self.file_shape).to(self.device)
             # self.generator.apply(weights_init)
-            self.optimizer_g = Adam(params=self.generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
+            self.optimizer_g = Adam(params=self.generator.parameters(), lr=0.0001, betas=(0.5, 0.999))
 
     def train(self, epochs: int, batch_size: int, sample_interval: int):
         start_time = datetime.datetime.now()
@@ -89,7 +88,7 @@ class GAN:
             loss_l1 = self.loss_l1(fake_A, real_A).double()
 
             # Total loss (100 is weight of L1 loss)
-            loss_G = loss_mse + (50 * loss_l1)
+            loss_G = loss_mse + (100 * loss_l1)
 
             loss_G.backward()
             self.optimizer_g.step()
@@ -123,10 +122,8 @@ class GAN:
 
             if epoch % sample_interval == 0:
                 self.sample_train_images(epoch)
-                # self.metric.append(metric)
-                # print(f"[Movement consistency metric: {metric}]")
 
-        # self.generate_samples(30)
+        # self.generate_samples(10)
         self.save_models([self.discriminator, self.generator, self.optimizer_d, self.optimizer_g])
 
     def prepare_sequences(self, batch_size=1) -> tuple:
@@ -135,14 +132,14 @@ class GAN:
         :return: Tuple of real and corrupted data.
         """
 
-        real_data = []
-        corrupted_data = []
+        imaging_data = []
+        mask_data = []
 
-        for _, (real, corrupted) in enumerate(self.data_loader.load_batch(batch_size)):
-            real_data.append(real[0])
-            corrupted_data.append(corrupted[0])
+        for _, (imaging, mask) in enumerate(self.data_loader.load_batch(batch_size)):
+            imaging_data.append(imaging[0])
+            mask_data.append(mask[0])
 
-        return tensor(real_data, device=self.device).float(), tensor(corrupted_data, device=self.device).float()
+        return tensor(imaging_data, device=self.device).float(), tensor(mask_data, device=self.device).float()
 
     def sample_train_images(self, epoch):
         """
@@ -151,17 +148,15 @@ class GAN:
         :return Coverage of users by drones.
         """
 
-        real, corrupted = self.prepare_sequences()
-        fake = self.generator(corrupted)
+        imaging, mask = self.prepare_sequences()
+        fake = self.generator(mask)
 
         fake = fake.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
-        real = real.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
-        corrupted = corrupted.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
+        imaging = imaging.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
+        mask = mask.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
 
         # visualize trained data and store them
-        self.data_loader.save_data(epoch, corrupted, real, fake)
-
-        # TODO calculate movement consistency metric
+        self.data_loader.save_data(epoch, mask, imaging, fake)
 
     # def generate_samples(self, samples: int):
     #     """

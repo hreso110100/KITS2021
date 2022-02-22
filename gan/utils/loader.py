@@ -33,19 +33,17 @@ class Loader:
             batch_img = []
             batch_mask = []
 
-            # load case folder and select one framer
+            # load case folder and select one frame
             case_folder = self.case_list[chosen_index]
             img_list = os.listdir(f"{self.dataset_folder}\\{case_folder}\\imaging")
-            img_list_index = np.random.choice(len(img_list), 1, replace=False)
+            img_list_index = np.random.choice(len(img_list), 1, replace=False)[0]
 
             try:
-                loaded_img = np.array(
-                    Image.open(f"{self.dataset_folder}\\{case_folder}\\imaging\\{img_list[img_list_index]}"),
-                    dtype=np.uint8)
-                loaded_mask = np.array(
+                loaded_img = np.asarray(
+                    Image.open(f"{self.dataset_folder}\\{case_folder}\\imaging\\{img_list[img_list_index]}"))
+                loaded_mask = np.asarray(
                     Image.open(
-                        f"{self.dataset_folder}\\{case_folder}\\aggregated_MAJ_seg\\mask_{img_list[img_list_index].split('_')[1]}"),
-                    dtype=np.uint8)
+                        f"{self.dataset_folder}\\{case_folder}\\aggregated_MAJ_seg\\mask_{img_list[img_list_index].split('_')[1]}"))
             except FileNotFoundError:
                 print(f"LOGGER: Cannot load case {self.case_list[chosen_index]}.")
                 continue
@@ -63,8 +61,8 @@ class Loader:
         """
         Saving data.
         :param epoch: Number of epochs.
-        :param mask: Corrupted data.
-        :param imaging: Real data.
+        :param mask: Mask data.
+        :param imaging: Imaging data.
         :param fake: Generated data.
         """
 
