@@ -88,5 +88,5 @@ class Loader:
         if not os.path.exists(f"{folder}/{str(epoch)}"):
             os.makedirs(f"{folder}/{str(epoch)}")
 
-        for index in range(data.shape[-1]):
+        for index in range(data.input_shape[-1]):
             Image.fromarray(data[:, :, index]).save(f"{folder}/{str(epoch)}/{file_name}_{index}.png")

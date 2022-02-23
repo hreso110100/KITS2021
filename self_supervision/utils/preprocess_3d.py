@@ -18,11 +18,11 @@ if __name__ == '__main__':
 
         nifty = nib.load(f"{BASE_PATH}\\{case}")
         nifty_data = nib.load(f"{BASE_PATH}\\{case}").get_fdata()
-        print(f"### Original shape: {nifty.shape} ###")
+        print(f"### Original shape: {nifty.input_shape} ###")
 
-        slice_start = int(nifty.shape[0] / 2)
-        slice_end = int(nifty.shape[0] / 2) + 3
+        slice_start = int(nifty.input_shape[0] / 2)
+        slice_end = int(nifty.input_shape[0] / 2) + 3
         sliced_nifty = nifty.slicer[slice_start: slice_end, :, :]
-        print(f"### New shape: {sliced_nifty.shape} ###")
+        print(f"### New shape: {sliced_nifty.input_shape} ###")
 
         nib.save(sliced_nifty, f"{STORE_PATH}\\KITS21_{case.split('_')[1]}")

@@ -28,7 +28,7 @@ if __name__ == '__main__':
             create_dir(f"{STORE_PATH}\\{case}\\{file.split('.')[0]}")
 
             # axial view
-            for slice_n in range(data.shape[0]):
+            for slice_n in range(data.input_shape[0]):
                 img_slice = data[slice_n, :, :]
                 # check if mask is empty, if yes ignore it
                 if np.sum(img_slice) == 0:

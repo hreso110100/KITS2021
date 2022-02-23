@@ -19,9 +19,9 @@ from torch.utils.tensorboard import SummaryWriter
 #         torch.nn.init.xavier_uniform_(model.weight)
 #         if model.bias is not None:
 #             torch.nn.init.zeros_(model.bias)
-from gan.discriminator import Discriminator
-from gan.generator import Generator
-from gan.utils.loader_edge import LoaderEdge
+from self_supervision.gan.discriminator import Discriminator
+from self_supervision.gan.generator import Generator
+from self_supervision.loaders.loader_edge import LoaderEdge
 
 
 class GAN:
@@ -29,7 +29,7 @@ class GAN:
     def __init__(self, load_models=False, models_path=""):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        with open(f"C:\\Users\\David\\PycharmProjects\\KITS2021\\gan\\config\\model_config.yaml", 'r') as file:
+        with open(f"/self_supervision\\config\\model_config.yaml", 'r') as file:
             self.config = yaml.load(file, Loader=yaml.FullLoader)
 
         self.samples_folder = self.config["folders"]["generated"]
