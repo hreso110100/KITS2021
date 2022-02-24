@@ -3,22 +3,11 @@ import os
 
 import numpy as np
 import torch
-import yaml
 from torch import tensor
 from torch.nn import MSELoss, L1Loss
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
 
-# def weights_init(model):
-#     """
-#     Init weights for CNN layers.
-#     :param model: Model to be initialized
-#     """
-#     classname = model.__class__.__name__
-#     if classname.find("Conv") != -1:
-#         torch.nn.init.xavier_uniform_(model.weight)
-#         if model.bias is not None:
-#             torch.nn.init.zeros_(model.bias)
 from self_supervision.gan.discriminator import Discriminator
 from self_supervision.gan.generator import Generator
 from self_supervision.loaders.loader_edge import LoaderEdge
@@ -28,15 +17,6 @@ class GAN:
 
     def __init__(self, load_models=False, models_path=""):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-        with open(f"/self_supervision\\config\\model_config.yaml", 'r') as file:
-            self.config = yaml.load(file, Loader=yaml.FullLoader)
-
-        self.samples_folder = self.config["folders"]["generated"]
-
-        if not os.path.exists(self.samples_folder):
-            os.makedirs(self.samples_folder)
-
         self.writer = SummaryWriter('../tensorboard')
 
         self.file_rows = 256
@@ -116,7 +96,7 @@ class GAN:
             elapsed_time = datetime.datetime.now() - start_time
 
             # measure losses
-            print(f"[Epoch {epoch}/{epochs}] [D loss: {loss_D}] [G loss: {loss_G}] time: {elapsed_time}")
+            print(f"LOGGER: [Epoch {epoch}/{epochs}] [D loss: {loss_D}] [G loss: {loss_G}] time: {elapsed_time}")
             self.writer.add_scalar('Training loss', loss_G, epoch)
             self.writer.add_scalar('Training loss', loss_D, epoch)
 

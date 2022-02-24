@@ -7,7 +7,7 @@ from monai.metrics import DiceMetric
 from monai.networks import one_hot
 from monai.transforms import AsDiscrete
 from torch import tensor
-from torch.nn import CrossEntropyLoss
+from torch.nn import CrossEntropyLoss, Softmax
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
 
@@ -26,6 +26,8 @@ class Segmentation:
 
         self.dataset_train_folder = self.config["folders"]["dataset"]
         self.dataset_test_folder = self.config["folders"]["dataset_test"]
+        self.dataset_val_folder = self.config["folders"]["dataset_validation"]
+
         self.writer = SummaryWriter('../tensorboard')
 
         self.input_rows = 256
@@ -39,7 +41,11 @@ class Segmentation:
                                                n_classes=self.n_classes)
         self.test_loader = SegmentationLoader(dataset_folder=self.dataset_test_folder,
                                               input_shape=self.file_shape, n_classes=self.n_classes)
-
+        self.val_loader = SegmentationLoader(dataset_folder=self.dataset_val_folder,
+                                             input_shape=self.file_shape, n_classes=self.n_classes)
+        # validation modules
+        self.softmax = Softmax(dim=1)
+        self.threshold = AsDiscrete(threshold_values=True)
         # Building loss
         self.loss_ce = CrossEntropyLoss()
 
@@ -94,8 +100,8 @@ class Segmentation:
                     prediction = self.unet(imaging)
 
                     # calculate metric for each class
-                    transform = AsDiscrete(argmax=True)
-                    self.dice_metric_batch(y_pred=transform(prediction),
+                    prediction = self.softmax(prediction)
+                    self.dice_metric_batch(y_pred=self.threshold(prediction),
                                            y=one_hot(torch.unsqueeze(mask, dim=1), num_classes=4))
                     metric_class = self.dice_metric_batch.aggregate()
                     print(
@@ -104,6 +110,26 @@ class Segmentation:
 
                     # reset metric
                     self.dice_metric_batch.reset()
+
+        with torch.no_grad():
+            # set the model to validation mode
+            self.unet.eval()
+
+            # prepare batch and do prediction
+            imaging, mask = self.prepare_sequences(self.val_loader, 25)
+            prediction = self.unet(imaging)
+
+            # calculate metric for each class
+            prediction = self.softmax(prediction)
+            self.dice_metric_batch(y_pred=self.threshold(prediction),
+                                   y=one_hot(torch.unsqueeze(mask, dim=1), num_classes=4))
+            metric_class = self.dice_metric_batch.aggregate()
+            print(
+                f"LOGGER: DICE for class 1: {metric_class[0].item()}, class 2: {metric_class[1].item()},"
+                f" class 3: {metric_class[2].item()}")
+
+            # reset metric
+            self.dice_metric_batch.reset()
 
         self.save_model(self.unet)
 
@@ -164,5 +190,9 @@ class Segmentation:
 
 
 if __name__ == '__main__':
-    model = Segmentation()
+    model = Segmentation(from_scratch=False)
     model.train(1000, 16, 10)
+
+# LOGGER: DICE for class 1: 0.7355390191078186, class 2: 0.18442557752132416, class 3: 0.0
+
+# LOGGER: DICE for class 1: 0.7528387308120728, class 2: 0.19860154390335083, class 3: 0.0

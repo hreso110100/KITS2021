@@ -10,7 +10,7 @@ from torch import tensor
 class LoaderEdge:
 
     def __init__(self, shape: tuple):
-        with open(f"C:\\Users\\David\\PycharmProjects\\KITS2021\\gan\\config\\model_config.yaml", 'r') as file:
+        with open(f"C:\\Users\\David\\PycharmProjects\\KITS2021\\self_supervision\\config\\model_config.yaml", 'r') as file:
             self.config = yaml.load(file, Loader=yaml.FullLoader)
 
         self.dataset_folder = self.config["folders"]["dataset"]
