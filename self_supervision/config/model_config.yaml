@@ -1,6 +1,6 @@
 folders:
-  dataset: "C:/Users/David/Desktop/all_class_kits/train"
-  dataset_test: "C:/Users/David/Desktop/sliced_kits/test"
+  dataset: "C:/Users/David/Desktop/all_class_kits"
+  dataset_test: "C:/Users/David/Desktop/test_all_class_kits"
   dataset_validation: "C:/Users/David/Desktop/sliced_kits/validation"
   generated: "C:/Users/David/Desktop/generated"
   predictions: "C:/Users/David/Desktop/predictions"

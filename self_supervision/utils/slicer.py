@@ -4,7 +4,7 @@ import os
 import nibabel as nib
 import numpy as np
 
-BASE_PATH = "C:\\Users\\David\\PycharmProjects\\kits21\\kits21\\data"
+BASE_PATH = "C:\\Users\\David\\PycharmProjects\\kits21\\imagesTr"
 STORE_PATH = "C:\\Users\\David\\Desktop\\sliced_kits"
 MASKS_TO_CONVERT = ["aggregated_MAJ_seg.nii.gz"]  # here add name of the mask to convert
 
@@ -20,11 +20,11 @@ if __name__ == '__main__':
         create_dir(f"{STORE_PATH}\\{case}\\imaging")
 
         # convert imaging to 2D
-        imaging_data = nib.load(f"{BASE_PATH}\\{case}\\imaging.nii.gz").get_fdata()
+        imaging_data = nib.load(f"{BASE_PATH}\\{case}\\.nii.gz").get_fdata()
 
         # convert mask files to 2D
         for file in MASKS_TO_CONVERT:
-            data = nib.load(f"{BASE_PATH}\\{case}\\{file}").get_fdata()
+            data = nib.load(f"{BASE_PATH}\\labelsTr\\{file}").get_fdata()
             create_dir(f"{STORE_PATH}\\{case}\\{file.split('.')[0]}")
 
             # axial view

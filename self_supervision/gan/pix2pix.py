@@ -162,7 +162,7 @@ class GAN:
         :param models: List of pytorch models to be saved
         """
         formatted_datetime = (datetime.datetime.now()).strftime("%d_%m_%Y_%H_%M")
-        save_path = f"../models/{formatted_datetime}"
+        save_path = f"C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\{formatted_datetime}"
 
         if not os.path.exists(save_path):
             os.makedirs(save_path)

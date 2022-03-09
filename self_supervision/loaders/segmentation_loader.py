@@ -3,7 +3,6 @@ import os
 import numpy as np
 import yaml
 from PIL import Image
-from torch import tensor
 
 
 class SegmentationLoader:
@@ -30,6 +29,7 @@ class SegmentationLoader:
         """
 
         # Selecting random cases
+        # np.random.seed(420)
         chosen_cases = np.random.choice(len(self.case_list), batch_size, replace=False)
         for _, chosen_index in enumerate(chosen_cases):
             batch_img = []
@@ -38,28 +38,23 @@ class SegmentationLoader:
             # load case folder and select one slice
             case_folder = self.case_list[chosen_index]
             img_list = os.listdir(f"{self.dataset_folder}\\{case_folder}\\imaging")
+            # np.random.seed(420)
             img_list_index = np.random.choice(len(img_list), 1, replace=False)[0]
 
             try:
                 loaded_img, loaded_mask = self.load_files(case_folder, img_list[img_list_index])
-
-                # we need to check if mask is valid, some wierd bug occurs in some of them :(
-                if np.max(loaded_mask) > 3:
-                    print(
-                        f"LOGGER: Invalid mask found at case {case_folder}:{img_list[img_list_index]}. Generating new batch file.")
-                    img_list_index = np.random.choice(len(img_list), 1, replace=False)[0]
-                    loaded_img, loaded_mask = self.load_files(case_folder, img_list[img_list_index])
             except FileNotFoundError:
                 print(f"LOGGER: Cannot load case {self.case_list[chosen_index]}.")
                 continue
 
             # min max scaling of imaging
             loaded_img = loaded_img / 255.0
+            loaded_mask = np.expand_dims(loaded_mask, axis=0)
 
             batch_img.append(loaded_img.reshape(self.input_shape))
             batch_mask.append(loaded_mask)
 
-            yield np.array(batch_img), np.array(batch_mask)
+            yield np.array(batch_img), np.array(batch_mask), (case_folder + "_" + img_list[img_list_index])
 
     def load_files(self, case_folder, img_path):
         """
@@ -77,36 +72,14 @@ class SegmentationLoader:
 
         return loaded_img, loaded_mask
 
-    def save_data(self, epoch: int, mask: tensor, imaging: tensor, prediction: tensor):
+    def save_data(self, prediction: np.array, prediction_case_name: str):
         """
         Saving data.
-        :param epoch: Number of epochs.
-        :param mask: Mask data.
-        :param imaging: Imaging data.
+        :param prediction_case_name: Name of the case and imaging.
         :param prediction: Prediction data.
         """
-
-        self.save(epoch, mask, self.predictions_folder, "mask")
-        self.save(epoch, imaging, self.predictions_folder, "imaging")
-        self.save(epoch, prediction, self.predictions_folder, "prediction")
-
-    def save(self, epoch: int, data: tensor, folder: str, file_name: str):
-        """
-        Base method for saving.
-        :param epoch: Number of epochs.
-        :param data: Data to save.
-        :param folder: Folder where data will be saved.
-        :param file_name: Name of the final file. File will be PNG by default.
-        """
-
-        if file_name == "prediction":
-            # TODO tu bude treba asi nejaky check iny
-            data = (data * 3).astype(np.uint8)
-        elif file_name == "imaging":
-            data = (data * 255).astype(np.uint8)
-
-        # storing each channel as separate image
-        if not os.path.exists(f"{folder}/{str(epoch)}"):
-            os.makedirs(f"{folder}/{str(epoch)}")
-
-        Image.fromarray(data[:, :, 0]).save(f"{folder}/{str(epoch)}/{file_name}.png")
+        pred_3 = prediction[3]
+        prediction = np.maximum(prediction[1], [prediction[2]])
+        prediction = np.maximum(prediction, pred_3)
+        # prediction = np.expand_dims(prediction[0], axis=-1)
+        Image.fromarray(prediction[0].astype(np.uint8)).save(f"{self.predictions_folder}/{prediction_case_name}")

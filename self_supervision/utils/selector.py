@@ -3,8 +3,8 @@ import os
 import numpy as np
 from PIL import Image
 
-BASE_PATH = "C:\\Users\\David\\Desktop\\sliced_kits\\train"
-STORE_PATH = "C:\\Users\\David\\Desktop\\all_class_kits\\train"
+BASE_PATH = "C:\\Users\\David\\Desktop\\sliced_kits\\test"
+STORE_PATH = "C:\\Users\\David\\Desktop\\test_all_class_kits"
 MASK = "aggregated_MAJ_seg"
 CLASS = 1
 
@@ -23,6 +23,12 @@ if __name__ == '__main__':
             if 1 in mask_np and 2 in mask_np and 3 in mask_np:
                 # if CLASS in mask_np and 2 not in mask_np and 3 not in mask_np:
                 # if CLASS in mask_np:
+                if mask_np.max() > 3:
+                    # some of the masks had 4 in mask which is really wierd
+                    print(case)
+                    print(mask_file)
+                    continue
+
                 create_dir(f"{STORE_PATH}\\{case}\\imaging")
                 create_dir(f"{STORE_PATH}\\{case}\\{MASK}")
 
