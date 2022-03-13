@@ -22,14 +22,15 @@ class SegmentationLoader:
         self.input_shape = input_shape
         self.n_classes = n_classes
 
-    def load_batch(self, batch_size=1):
+    def load_batch(self, batch_size=1, validation=False):
         """
         Load data from given folder.
         :return: Tuple containing imagings and masks.
         """
 
         # Selecting random cases
-        # np.random.seed(420)
+        if validation:
+            np.random.seed(420)
         chosen_cases = np.random.choice(len(self.case_list), batch_size, replace=False)
         for _, chosen_index in enumerate(chosen_cases):
             batch_img = []
@@ -38,7 +39,9 @@ class SegmentationLoader:
             # load case folder and select one slice
             case_folder = self.case_list[chosen_index]
             img_list = os.listdir(f"{self.dataset_folder}\\{case_folder}\\imaging")
-            # np.random.seed(420)
+
+            if validation:
+                np.random.seed(420)
             img_list_index = np.random.choice(len(img_list), 1, replace=False)[0]
 
             try:

@@ -48,7 +48,7 @@ class Segmentation:
                                              input_shape=self.file_shape, n_classes=self.n_classes)
         # validation modules
         self.softmax = Softmax(dim=1)
-        self.threshold = AsDiscrete(threshold_values=True, logit_thresh=0.5)
+        self.threshold = AsDiscrete(threshold_values=True, logit_thresh=0.7)
         # Building loss
         self.loss_dice = DiceLoss(include_background=False, softmax=True, to_onehot_y=True)
 
@@ -121,7 +121,7 @@ class Segmentation:
             self.unet.eval()
 
             # prepare batch and do prediction
-            for (imaging, mask, prediction_case_name) in self.prepare_sequences(self.val_loader, 25):
+            for (imaging, mask, prediction_case_name) in self.prepare_sequences(self.val_loader, 30, validation=True):
                 prediction = self.unet(imaging)
 
                 # calculate metric for each class
@@ -147,9 +147,10 @@ class Segmentation:
 
         self.save_model(self.unet)
 
-    def prepare_sequences(self, data_loader: SegmentationLoader, batch_size=1) -> list:
+    def prepare_sequences(self, data_loader: SegmentationLoader, batch_size=1, validation=False) -> list:
         """
         Preparing sequences of real and mask data.
+        :param validation: Perform loading of fixed validation set.
         :param batch_size: Size of the batch.
         :param data_loader: Instance of data loader class.
         :return: Tuple of real and mask data.
@@ -157,7 +158,7 @@ class Segmentation:
 
         data = []
 
-        for (imaging, mask, prediction_case_name) in data_loader.load_batch(batch_size):
+        for (imaging, mask, prediction_case_name) in data_loader.load_batch(batch_size, validation):
             data.append((tensor(imaging, device=self.device, dtype=torch.float),
                          tensor(mask, device=self.device, dtype=torch.float), prediction_case_name))
 
@@ -208,4 +209,4 @@ class Segmentation:
 
 if __name__ == '__main__':
     model = Segmentation(from_scratch=True)
-    model.train(10000, 16, 100)
+    model.train(2000, 16, 100)
