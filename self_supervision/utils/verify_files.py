@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 from numpy import copy, stack, moveaxis
 
-DATA_PATH = "C:\\Users\\David\\Desktop\\predictions"
+DATA_PATH = "C:\\Users\\David\\Desktop\\predictions_gan"
 STORE_PATH = "C:\\Users\\David\\Desktop\\masked_pred"
 CASE = "case_00120"
 MASK = "aggregated_MAJ_seg"
@@ -64,4 +64,4 @@ if __name__ == '__main__':
         if not os.path.exists(f"{STORE_PATH}\\{mask_file.split('_imaging'[0])}"):
             os.makedirs(f"{STORE_PATH}\\{mask_file.split('_imaging'[0])}")
 
-        Image.fromarray(stacked).save(f"{STORE_PATH}\\{mask_file.split('_imaging'[0])}\\{mask_file.split('_imaging'[1])}")
+        Image.fromarray(stacked).save(f"{STORE_PATH}\\{mask_file}")

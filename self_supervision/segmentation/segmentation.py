@@ -8,6 +8,7 @@ from monai.losses import DiceLoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
 from monai.transforms import AsDiscrete
+from numpy import nanmean
 from torch import tensor
 from torch.nn import Softmax
 from torch.optim import Adam
@@ -48,12 +49,13 @@ class Segmentation:
                                              input_shape=self.file_shape, n_classes=self.n_classes)
         # validation modules
         self.softmax = Softmax(dim=1)
-        self.threshold = AsDiscrete(threshold_values=True, logit_thresh=0.7)
+        self.threshold = AsDiscrete(threshold_values=True, logit_thresh=0.5)
         # Building loss
         self.loss_dice = DiceLoss(include_background=False, softmax=True, to_onehot_y=True)
 
         # Build metric
         self.dice_metric_batch = DiceMetric(include_background=False, reduction="mean_batch")
+        self.dice_metric_none = DiceMetric(include_background=False, reduction="none")
 
         # Choosing whether to load or create new models
         if load_model:
@@ -63,11 +65,11 @@ class Segmentation:
             if from_scratch:
                 # train U-Net from scratch
                 self.unet = UNet(self.file_shape).to(self.device)
-                self.optimizer = Adam(params=self.unet.parameters(), lr=0.0001, betas=(0.5, 0.999))
+                self.optimizer = Adam(params=self.unet.parameters(), lr=0.00001, betas=(0.5, 0.999))
             else:
                 # load weights from pretext task
                 self.unet = self.load_model("C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\24_02_2022_17_26")
-                self.optimizer = Adam(params=self.unet.parameters(), lr=0.0001, betas=(0.5, 0.999))
+                self.optimizer = Adam(params=self.unet.parameters(), lr=0.00001, betas=(0.5, 0.999))
 
     def train(self, epochs: int, batch_size: int, test_interval: int):
         start_time = datetime.datetime.now()
@@ -121,14 +123,14 @@ class Segmentation:
             self.unet.eval()
 
             # prepare batch and do prediction
-            for (imaging, mask, prediction_case_name) in self.prepare_sequences(self.val_loader, 30, validation=True):
+            for (imaging, mask, prediction_case_name) in self.prepare_sequences(self.val_loader, 25, validation=True):
                 prediction = self.unet(imaging)
 
                 # calculate metric for each class
                 prediction = self.softmax(prediction)
                 prediction = self.threshold(prediction)
 
-                self.dice_metric_batch(y_pred=prediction, y=one_hot(mask, num_classes=4))
+                self.dice_metric_none(y_pred=prediction, y=one_hot(mask, num_classes=4))
 
                 # convert one hot encoded prediction back to 1-channel and save
                 prediction = prediction.cpu().detach().numpy()
@@ -137,10 +139,16 @@ class Segmentation:
 
                 self.val_loader.save_data(prediction[0], prediction_case_name)
 
-            class_scores = self.dice_metric_batch.aggregate()
+            class_scores = self.dice_metric_none.aggregate().detach().cpu()
+
+            values = []
+
+            for class_idx in range(self.n_classes - 1):
+                values.append(nanmean(class_scores[class_scores[:, class_idx] != 0]))
+
             print(
-                f"LOGGER: DICE for class 1: {class_scores[0]}, class 2: {class_scores[1]},"
-                f" class 3: {class_scores[2]}")
+                f"LOGGER: DICE for class 1: {values[0]}, class 2: {values[1]},"
+                f" class 3: {values[2]}")
 
             # reset metric
             self.dice_metric_batch.reset()
@@ -150,7 +158,7 @@ class Segmentation:
     def prepare_sequences(self, data_loader: SegmentationLoader, batch_size=1, validation=False) -> list:
         """
         Preparing sequences of real and mask data.
-        :param validation: Perform loading of fixed validation set.
+        :param va lidation: Perform loading of fixed validation set.
         :param batch_size: Size of the batch.
         :param data_loader: Instance of data loader class.
         :return: Tuple of real and mask data.
@@ -203,10 +211,11 @@ class Segmentation:
             if index < 8:
                 param.requires_grad = False
 
+
         print("LOGGER: Weights of U-Net successfully loaded.")
         return unet
 
 
 if __name__ == '__main__':
     model = Segmentation(from_scratch=True)
-    model.train(2000, 16, 100)
+    model.train(2000, 64, 100)

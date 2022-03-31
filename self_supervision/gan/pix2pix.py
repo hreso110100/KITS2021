@@ -103,7 +103,7 @@ class GAN:
             if epoch % sample_interval == 0:
                 self.sample_train_images(epoch)
 
-        # self.generate_samples(10)
+        self.generate_samples(25)
         self.save_models([self.discriminator, self.generator, self.optimizer_d, self.optimizer_g])
 
     def prepare_sequences(self, batch_size=1) -> tuple:
@@ -138,23 +138,17 @@ class GAN:
         # visualize trained data and store them
         self.data_loader.save_data(epoch, mask, imaging, fake)
 
-    # def generate_samples(self, samples: int):
-    #     """
-    #     Generate N number of fake trajectories and store them on disc.
-    #     :param samples: Number of samples to generate
-    #     """
-    #     for i in range(samples):
-    #         print(f"LOGGER: Generating sample {i + 1}/{samples}.")
-    #         real, corrupted = self.prepare_sequences()
-    #         fake = self.generator(corrupted)
-    #
-    #         fake = fake.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
-    #         real = real.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
-    #
-    #         coverage = self.markers.calculate_coverage([real, fake])
-    #         self.coverages.append(coverage)
-    #
-    #     self.plot_coverage(self.coverages)
+    def generate_samples(self, samples: int):
+        """
+        Generate N number of fake trajectories and store them on disc.
+        :param samples: Number of samples to generate
+        """
+        for i in range(samples):
+            print(f"LOGGER: Generating sample {i + 1}/{samples}.")
+            imaging, mask = self.prepare_sequences()
+            fake = self.generator(mask)
+            fake = fake.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
+            self.data_loader.save_data(i, mask, imaging, fake)
 
     def save_models(self, models: list):
         """
