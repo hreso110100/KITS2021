@@ -81,8 +81,5 @@ class SegmentationLoader:
         :param prediction_case_name: Name of the case and imaging.
         :param prediction: Prediction data.
         """
-        pred_3 = prediction[3]
-        prediction = np.maximum(prediction[1], [prediction[2]])
-        prediction = np.maximum(prediction, pred_3)
-        # prediction = np.expand_dims(prediction[0], axis=-1)
+        prediction = np.array(prediction.detach().cpu())
         Image.fromarray(prediction[0].astype(np.uint8)).save(f"{self.predictions_folder}/{prediction_case_name}")

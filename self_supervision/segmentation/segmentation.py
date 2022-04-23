@@ -4,12 +4,11 @@ import os
 import numpy as np
 import torch
 import yaml
-from monai.losses import DiceLoss
+from monai.losses import DiceLoss, DiceFocalLoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
-from monai.transforms import AsDiscrete
 from numpy import nanmean
-from torch import tensor
+from torch import tensor, argmax
 from torch.nn import Softmax
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
@@ -49,9 +48,8 @@ class Segmentation:
                                              input_shape=self.file_shape, n_classes=self.n_classes)
         # validation modules
         self.softmax = Softmax(dim=1)
-        self.threshold = AsDiscrete(threshold_values=True, logit_thresh=0.5)
         # Building loss
-        self.loss_dice = DiceLoss(include_background=False, softmax=True, to_onehot_y=True)
+        self.loss_dice = DiceFocalLoss(include_background=False, softmax=True, to_onehot_y=True, gamma=2, lambda_dice=0.5)
 
         # Build metric
         self.dice_metric_batch = DiceMetric(include_background=False, reduction="mean_batch")
@@ -65,11 +63,12 @@ class Segmentation:
             if from_scratch:
                 # train U-Net from scratch
                 self.unet = UNet(self.file_shape).to(self.device)
-                self.optimizer = Adam(params=self.unet.parameters(), lr=0.00001, betas=(0.5, 0.999))
+                self.optimizer = Adam(params=self.unet.parameters(), lr=0.1, betas=(0.5, 0.999))
             else:
                 # load weights from pretext task
-                self.unet = self.load_model("C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\24_02_2022_17_26")
-                self.optimizer = Adam(params=self.unet.parameters(), lr=0.00001, betas=(0.5, 0.999))
+                self.unet = self.load_model(
+                    "C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\gan\\01_04_2022_08_57")
+                self.optimizer = Adam(params=self.unet.parameters(), lr=0.1, betas=(0.5, 0.999))
 
     def train(self, epochs: int, batch_size: int, test_interval: int):
         start_time = datetime.datetime.now()
@@ -77,40 +76,51 @@ class Segmentation:
         for epoch in range(epochs):
             # set the model to training mode
             self.unet.train()
-            average_batch_loss = 0
+            avg_train_loss = 0
 
             # prepare batch and do prediction
-            for (imaging, mask, _) in self.prepare_sequences(self.train_loader, batch_size):
-                prediction = self.unet(imaging)
+            for _ in range(40):
+                imgs, masks, _ = self.prepare_sequences(self.train_loader, batch_size)
+                prediction = self.unet(imgs)
                 # calculate loss and perform backprogation
                 self.optimizer.zero_grad()
-                train_loss = self.loss_dice(prediction, mask)
-                average_batch_loss += train_loss.item()
+                train_loss = self.loss_dice(prediction, masks)
+                avg_train_loss += train_loss.item()
                 train_loss.backward()
                 self.optimizer.step()
 
             # measure progress of the loss
-            average_batch_loss = average_batch_loss / batch_size
+            avg_train_loss = avg_train_loss / 40
             elapsed_time = datetime.datetime.now() - start_time
-            print(f"LOGGER: [Epoch {epoch}/{epochs}] [U-Net loss: {average_batch_loss}] time: {elapsed_time}")
-            self.writer.add_scalar('Training loss', average_batch_loss, epoch)
+            print(f"LOGGER: [Epoch {epoch}/{epochs}] [U-Net loss: {avg_train_loss}] time: {elapsed_time}")
+            self.writer.add_scalar('Training loss', avg_train_loss, epoch)
 
             # perform validation of training
             if epoch % test_interval == 0:
+                ITERATIONS = 8
                 # set the model to validation mode
                 self.unet.eval()
+                avg_test_loss = 0
                 # switch off autograd
                 with torch.no_grad():
                     # prepare batch and do prediction
-                    for (imaging, mask, _) in self.prepare_sequences(self.train_loader, 8):
-                        prediction = self.unet(imaging)
+                    for _ in range(ITERATIONS):
+                        imgs, masks, _ = self.prepare_sequences(self.test_loader, 8)
+                        prediction = self.unet(imgs)
+                        # calculate test loss
+                        test_loss = self.loss_dice(prediction, masks)
+                        avg_test_loss += test_loss.item()
                         # calculate metric for each class
                         prediction = self.softmax(prediction)
-                        prediction = self.threshold(prediction)
+                        prediction = argmax(prediction, dim=1)
+                        prediction = np.expand_dims(prediction.detach().cpu(), axis=1)
 
-                        self.dice_metric_batch(y_pred=prediction, y=one_hot(mask, num_classes=4))
+                        self.dice_metric_batch(y_pred=one_hot(torch.from_numpy(prediction).cuda(), num_classes=4),
+                                               y=one_hot(masks, num_classes=4))
 
+                    avg_test_loss = avg_test_loss / ITERATIONS
                     class_scores = self.dice_metric_batch.aggregate()
+                    print(f"LOGGER: [Epoch {epoch}/{epochs}] [U-Net test loss: {avg_test_loss}] time: {elapsed_time}")
                     print(
                         f"LOGGER: DICE for class 1: {class_scores[0]}, class 2: {class_scores[1]},"
                         f" class 3: {class_scores[2]}")
@@ -123,23 +133,22 @@ class Segmentation:
             self.unet.eval()
 
             # prepare batch and do prediction
-            for (imaging, mask, prediction_case_name) in self.prepare_sequences(self.val_loader, 25, validation=True):
+            for imaging, mask, prediction_case_name in enumerate(
+                    self.prepare_sequences(self.val_loader, 25, validation=True)):
                 prediction = self.unet(imaging)
 
                 # calculate metric for each class
                 prediction = self.softmax(prediction)
-                prediction = self.threshold(prediction)
+                prediction = argmax(prediction, dim=1)
+                prediction = np.expand_dims(prediction.detach().cpu(), axis=1)
+                prediction = torch.from_numpy(prediction).cuda()
+                prediction = one_hot(prediction, num_classes=4)
+                self.dice_metric_none(y_pred=prediction,
+                                      y=one_hot(mask, num_classes=4))
 
-                self.dice_metric_none(y_pred=prediction, y=one_hot(mask, num_classes=4))
+                self.val_loader.save_data(argmax(prediction, dim=1), prediction_case_name)
 
-                # convert one hot encoded prediction back to 1-channel and save
-                prediction = prediction.cpu().detach().numpy()
-                for idx_channel, mask_channel in enumerate(prediction[0]):
-                    prediction[0, idx_channel, :, :] = np.where(mask_channel == 1, idx_channel, 0)
-
-                self.val_loader.save_data(prediction[0], prediction_case_name)
-
-            class_scores = self.dice_metric_none.aggregate().detach().cpu()
+            class_scores = self.dice_metric_none.aggregate()
 
             values = []
 
@@ -151,26 +160,31 @@ class Segmentation:
                 f" class 3: {values[2]}")
 
             # reset metric
-            self.dice_metric_batch.reset()
+            self.dice_metric_none.reset()
 
         self.save_model(self.unet)
 
-    def prepare_sequences(self, data_loader: SegmentationLoader, batch_size=1, validation=False) -> list:
+    def prepare_sequences(self, data_loader: SegmentationLoader, batch_size=1, validation=False) -> tuple:
         """
         Preparing sequences of real and mask data.
-        :param va lidation: Perform loading of fixed validation set.
+        :param validation: Perform loading of fixed validation set.
         :param batch_size: Size of the batch.
         :param data_loader: Instance of data loader class.
         :return: Tuple of real and mask data.
         """
 
-        data = []
+        imgs = []
+        masks = []
+        names = []
 
         for (imaging, mask, prediction_case_name) in data_loader.load_batch(batch_size, validation):
-            data.append((tensor(imaging, device=self.device, dtype=torch.float),
-                         tensor(mask, device=self.device, dtype=torch.float), prediction_case_name))
+            imgs.append(imaging[0])
+            masks.append(mask[0])
+            names.append(prediction_case_name)
 
-        return data
+        return tensor(np.stack(imgs, axis=0), device=self.device, dtype=torch.float), tensor(np.stack(masks, axis=0),
+                                                                                             device=self.device,
+                                                                                             dtype=torch.float), names
 
     def save_model(self, unet: UNet):
         """
@@ -211,11 +225,10 @@ class Segmentation:
             if index < 8:
                 param.requires_grad = False
 
-
         print("LOGGER: Weights of U-Net successfully loaded.")
         return unet
 
 
 if __name__ == '__main__':
     model = Segmentation(from_scratch=True)
-    model.train(2000, 64, 100)
+    model.train(800, 8, 25)

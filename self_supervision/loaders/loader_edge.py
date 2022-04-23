@@ -10,7 +10,8 @@ from torch import tensor
 class LoaderEdge:
 
     def __init__(self, shape: tuple):
-        with open(f"C:\\Users\\David\\PycharmProjects\\KITS2021\\self_supervision\\config\\model_config.yaml", 'r') as file:
+        with open(f"C:\\Users\\David\\PycharmProjects\\KITS2021\\self_supervision\\config\\gan_config.yaml",
+                  'r') as file:
             self.config = yaml.load(file, Loader=yaml.FullLoader)
 
         self.dataset_folder = self.config["folders"]["dataset"]
@@ -36,14 +37,15 @@ class LoaderEdge:
 
             # load case folder and select one frame
             case_folder = self.case_list[chosen_index]
-            img_list = os.listdir(f"{self.dataset_folder}\\{case_folder}\\imaging")
+            img_list = os.listdir(f"{self.dataset_folder}\\{case_folder}")
             img_list_index = np.random.choice(len(img_list), 1, replace=False)[0]
 
             try:
                 loaded_img = np.asarray(
-                    Image.open(f"{self.dataset_folder}\\{case_folder}\\imaging\\{img_list[img_list_index]}"))
+                    Image.open(f"{self.dataset_folder}\\{case_folder}\\{img_list[img_list_index]}"))
                 edges = feature.canny(loaded_img).astype(np.uint8)
-                loaded_edges = np.where(edges == 1, 255, edges)
+                loaded_edges = np.where(edges == 1, 255, edges) + np.random.normal(0, 1, (256, 256)).astype(np.uint8)
+
             except FileNotFoundError:
                 print(f"LOGGER: Cannot load case {self.case_list[chosen_index]}.")
                 continue

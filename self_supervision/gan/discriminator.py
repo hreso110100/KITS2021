@@ -19,7 +19,7 @@ class Discriminator(nn.Module):
             nn.ZeroPad2d((1, 0, 1, 0)),
             Conv2d(512, 1, kernel_size=4, padding=1, stride=1, bias=False),
         )
-        summary(self.model, (file_shape[0] * 2, file_shape[1], file_shape[2]))
+        # summary(self.model, (file_shape[0] * 2, file_shape[1], file_shape[2]))
 
     def build_block(self, in_filters: int, out_filters: int, normalization=True):
         layers = [Conv2d(in_filters, out_filters, kernel_size=4, stride=2, padding=1)]

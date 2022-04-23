@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 from numpy import copy, stack, moveaxis
 
-DATA_PATH = "C:\\Users\\David\\Desktop\\predictions_gan"
+DATA_PATH = "C:\\Users\\David\\Desktop\\predictions"
 STORE_PATH = "C:\\Users\\David\\Desktop\\masked_pred"
 CASE = "case_00120"
 MASK = "aggregated_MAJ_seg"

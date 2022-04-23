@@ -6,7 +6,6 @@ import torch
 from torch import tensor
 from torch.nn import MSELoss, L1Loss
 from torch.optim import Adam
-from torch.utils.tensorboard import SummaryWriter
 
 from self_supervision.gan.discriminator import Discriminator
 from self_supervision.gan.generator import Generator
@@ -15,9 +14,8 @@ from self_supervision.loaders.loader_edge import LoaderEdge
 
 class GAN:
 
-    def __init__(self, load_models=False, models_path=""):
+    def __init__(self):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.writer = SummaryWriter('../tensorboard')
 
         self.file_rows = 256
         self.file_cols = 256
@@ -31,19 +29,12 @@ class GAN:
 
         # Building discriminator
         self.d_patch = (1, 16, 16)
+        self.discriminator = Discriminator(self.file_shape).to(self.device)
+        self.optimizer_d = Adam(params=self.discriminator.parameters(), lr=0.0001, betas=(0.5, 0.999))
 
-        # Choosing whether to load or create new models
-        if load_models:
-            self.discriminator, self.generator, self.optimizer_d, self.optimizer_g = self.load_models(path=models_path)
-        else:
-            self.discriminator = Discriminator(self.file_shape).to(self.device)
-            # self.discriminator.apply(weights_init)
-            self.optimizer_d = Adam(params=self.discriminator.parameters(), lr=0.0001, betas=(0.5, 0.999))
-
-            # Building generator
-            self.generator = Generator(self.file_shape).to(self.device)
-            # self.generator.apply(weights_init)
-            self.optimizer_g = Adam(params=self.generator.parameters(), lr=0.0001, betas=(0.5, 0.999))
+        # Building generator
+        self.generator = Generator(self.file_shape).to(self.device)
+        self.optimizer_g = Adam(params=self.generator.parameters(), lr=0.0001, betas=(0.5, 0.999))
 
     def train(self, epochs: int, batch_size: int, sample_interval: int):
         start_time = datetime.datetime.now()
@@ -97,8 +88,6 @@ class GAN:
 
             # measure losses
             print(f"LOGGER: [Epoch {epoch}/{epochs}] [D loss: {loss_D}] [G loss: {loss_G}] time: {elapsed_time}")
-            self.writer.add_scalar('Training loss', loss_G, epoch)
-            self.writer.add_scalar('Training loss', loss_D, epoch)
 
             if epoch % sample_interval == 0:
                 self.sample_train_images(epoch)
@@ -147,7 +136,11 @@ class GAN:
             print(f"LOGGER: Generating sample {i + 1}/{samples}.")
             imaging, mask = self.prepare_sequences()
             fake = self.generator(mask)
+
             fake = fake.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
+            imaging = imaging.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
+            mask = mask.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
+
             self.data_loader.save_data(i, mask, imaging, fake)
 
     def save_models(self, models: list):
@@ -156,7 +149,7 @@ class GAN:
         :param models: List of pytorch models to be saved
         """
         formatted_datetime = (datetime.datetime.now()).strftime("%d_%m_%Y_%H_%M")
-        save_path = f"C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\{formatted_datetime}"
+        save_path = f"C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\gan\\{formatted_datetime}"
 
         if not os.path.exists(save_path):
             os.makedirs(save_path)
@@ -166,36 +159,55 @@ class GAN:
 
         print(f"LOGGER: Models successfully saved to {save_path}")
 
-    def load_models(self, path: str):
+    def transform_weights(self, path: str):
         """
-        Loading trained models.
-        :param path: Path to folder where models are stored
+        Fetching pre-trained U-Net model weights from encoder part.
+        :param path: Path to folder where the model is stored
         """
+        pretrained_weights = torch.load(f"{path}/1_model_Generator.pth")
 
-        discriminator, generator, optimizer_d, optimizer_g = [None, None, None, None]
-        files = os.listdir(path)
-        files.sort()
+        pretrained_weights = {k: v for k, v in pretrained_weights.items() if 'transpose' not in k}
 
-        for model in files:
-            full_path = f"{path}/{model}"
+        for index, (k, v) in enumerate(pretrained_weights.items()):
+            layer_idx = int(index / 4) + 1
+            if 'down' in k:
+                if 'Second' in k and 'bias' not in k:
+                    v = torch.unsqueeze(v, 4)
+                    v = torch.cat((v, v, v), dim=-1)
+                    torch.save(v,
+                               f"C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\weights\\down_{layer_idx}_second.pt")
+                elif 'Second' in k and 'bias' in k:
+                    torch.save(v,
+                               f"C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\weights\\down_{layer_idx}_bias_second.pt")
+                elif 'bias' in k:
+                    torch.save(v,
+                               f"C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\weights\\down_{layer_idx}_bias_first.pt")
+                else:
+                    v = torch.unsqueeze(v, 4)
+                    v = torch.cat((v, v, v), dim=-1)
+                    torch.save(v,
+                               f"C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\weights\\down_{layer_idx}_first.pt")
 
-            if "0" in model:
-                discriminator = Discriminator(self.file_shape).to(self.device)
-                discriminator.load_state_dict(torch.load(full_path))
-            elif "1" in model:
-                generator = Generator(self.file_shape).to(self.device)
-                generator.load_state_dict(torch.load(full_path))
-            elif "2" in model:
-                optimizer_d = Adam(params=discriminator.parameters(), lr=0.0002, betas=(0.5, 0.999))
-                optimizer_d.load_state_dict(torch.load(full_path))
-            elif "3" in model:
-                optimizer_g = Adam(params=generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
-                optimizer_g.load_state_dict(torch.load(full_path))
-
-        print("LOGGER: Models successfully loaded.")
-        return discriminator, generator, optimizer_d, optimizer_g
+            if 'up' and 'conv' in k:
+                if '0' in k and 'bias' not in k:
+                    v = torch.unsqueeze(v, 4)
+                    v = torch.cat((v, v, v), dim=-1)
+                    torch.save(v,
+                               f"C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\weights\\up_{layer_idx - 7}_first.pt")
+                elif '0' in k and 'bias' in k:
+                    torch.save(v,
+                               f"C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\weights\\up_{layer_idx - 7}_bias_first.pt")
+                elif 'bias' in k:
+                    torch.save(v,
+                               f"C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\weights\\up_{layer_idx - 7}_bias_second.pt")
+                else:
+                    v = torch.unsqueeze(v, 4)
+                    v = torch.cat((v, v, v), dim=-1)
+                    torch.save(v,
+                               f"C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\weights\\up_{layer_idx - 7}_second.pt")
 
 
 if __name__ == '__main__':
     model = GAN()
-    model.train(10000, 8, 100)
+    # model.train(20000, 4, 100)
+    model.transform_weights("C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\gan\\20_04_2022_16_29")
