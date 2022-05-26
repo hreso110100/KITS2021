@@ -1,41 +1,33 @@
 from torch import nn, cat
-from torch.nn import Sequential, Dropout, LeakyReLU, ReLU, Tanh, Conv3d, \
-    MaxPool3d, InstanceNorm3d, ConvTranspose3d
+from torch.nn import Conv2d, Sequential, Dropout, ConvTranspose2d, LeakyReLU, ReLU, InstanceNorm2d, Tanh, MaxPool2d
 
 
 class UNetDown(nn.Module):
-    def __init__(self, input_size: int, output_filters: int, pooling=True, dropout=0.0, is_first=False, is_last=False):
+    def __init__(self, input_size: int, output_filters: int, dropout=0.0, pooling=True, is_first=False):
         super(UNetDown, self).__init__()
         self.model = Sequential()
 
         if pooling:
-            self.model.add_module("MaxPooling3d", MaxPool3d(kernel_size=2, stride=2))
+            self.model.add_module("MaxPooling2d", MaxPool2d(kernel_size=2, stride=2))
 
         if is_first:
-            self.model.add_module("Conv3d",
-                                  Conv3d(input_size, output_filters, kernel_size=(1, 3, 3), padding=(0, 1, 1)))
-            self.model.add_module("InstanceNorm3d", InstanceNorm3d(output_filters))
+            self.model.add_module("Conv2d", Conv2d(input_size, output_filters, kernel_size=(1, 3), padding=(0, 1)))
+            self.model.add_module("InstanceNorm2d", InstanceNorm2d(output_filters))
             self.model.add_module("LeakyReLU", LeakyReLU(0.2, inplace=True))
         else:
-            self.model.add_module("Conv3d", Conv3d(input_size, output_filters, kernel_size=3, padding=1))
-
-            if not is_last:
-                self.model.add_module("InstanceNorm3d", InstanceNorm3d(output_filters))
-
+            self.model.add_module("Conv2d", Conv2d(input_size, output_filters, kernel_size=3, padding=1))
+            self.model.add_module("InstanceNorm2d", InstanceNorm2d(output_filters))
             self.model.add_module("LeakyReLU", LeakyReLU(0.2, inplace=True))
 
         if is_first:
-            self.model.add_module("Conv3dSecond",
-                                  Conv3d(output_filters, output_filters, kernel_size=(1, 3, 3), padding=(0, 1, 1)))
-            self.model.add_module("InstanceNorm3dSecond", InstanceNorm3d(output_filters))
+            self.model.add_module("Conv2dSecond",
+                                  Conv2d(output_filters, output_filters, kernel_size=(1, 3), padding=(0, 1)))
+            self.model.add_module("InstanceNorm2dSecond", InstanceNorm2d(output_filters))
             self.model.add_module("LeakyReLUSecond", LeakyReLU(0.2, inplace=True))
         else:
-            self.model.add_module("Conv3dSecond",
-                                  Conv3d(output_filters, output_filters, kernel_size=3, padding=1))
-
-            if not is_last:
-                self.model.add_module("InstanceNorm3dSecond", InstanceNorm3d(output_filters))
-
+            self.model.add_module("Conv2dSecond",
+                                  Conv2d(output_filters, output_filters, kernel_size=3, padding=1))
+            self.model.add_module("InstanceNorm2dSecond", InstanceNorm2d(output_filters))
             self.model.add_module("LeakyReLUSecond", LeakyReLU(0.2, inplace=True))
 
         if dropout:
@@ -50,11 +42,11 @@ class UNetUp(nn.Module):
         super(UNetUp, self).__init__()
 
         self.conv = Sequential(
-            Conv3d(input_size, output_filters, kernel_size=3, padding=1, bias=True),
-            InstanceNorm3d(output_filters),
+            Conv2d(input_size, output_filters, kernel_size=3, padding=1, bias=True),
+            InstanceNorm2d(output_filters),
             ReLU(inplace=True),
-            Conv3d(output_filters, output_filters, kernel_size=3, padding=1, bias=True),
-            InstanceNorm3d(output_filters),
+            Conv2d(output_filters, output_filters, kernel_size=3, padding=1, bias=True),
+            InstanceNorm2d(output_filters),
             ReLU(inplace=True),
         )
 
@@ -62,9 +54,9 @@ class UNetUp(nn.Module):
             self.conv.add_module("Dropout", Dropout(dropout))
 
         if is_diff_than_conv:
-            self.transpose = ConvTranspose3d(320, output_filters, kernel_size=2, stride=2, bias=False)
+            self.transpose = ConvTranspose2d(320, output_filters, kernel_size=2, stride=2, bias=False)
         else:
-            self.transpose = ConvTranspose3d(input_size, output_filters, kernel_size=2, stride=2, bias=False)
+            self.transpose = ConvTranspose2d(input_size, output_filters, kernel_size=2, stride=2, bias=False)
 
     def forward(self, layer, skip_input):
         layer = self.transpose(layer)
@@ -88,7 +80,7 @@ class Generator(nn.Module):
         self.down4 = UNetDown(128, 256)
         self.down5 = UNetDown(256, 320)
         self.down6 = UNetDown(320, 320)
-        self.down7 = UNetDown(320, 320, is_last=True)
+        self.down7 = UNetDown(320, 320)
 
         # UpSampling
         self.up1 = UNetUp(640, 320, is_diff_than_conv=True, dropout=0.1)
@@ -99,7 +91,7 @@ class Generator(nn.Module):
         self.up6 = UNetUp(64, 32, dropout=0.1)
 
         self.last = nn.Sequential(
-            ConvTranspose3d(32, file_shape[0], kernel_size=3, stride=1, padding=1, dilation=1),
+            ConvTranspose2d(32, file_shape[0], kernel_size=3, stride=1, padding=1, dilation=1),
             Tanh(),
         )
 

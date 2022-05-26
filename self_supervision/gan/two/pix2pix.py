@@ -7,8 +7,8 @@ from torch import tensor
 from torch.nn import MSELoss, L1Loss
 from torch.optim import Adam
 
-from self_supervision.gan.discriminator import Discriminator
-from self_supervision.gan.generator import Generator
+from self_supervision.gan.two.discriminator import Discriminator
+from self_supervision.gan.two.generator import Generator
 from self_supervision.loaders.loader_edge import LoaderEdge
 
 
@@ -44,8 +44,8 @@ class GAN:
         fake = tensor(np.zeros((batch_size,) + self.d_patch), requires_grad=False, device=self.device)
 
         for epoch in range(epochs):
-            real_A, real_B = self.prepare_sequences(batch_size)
-            fake_A = self.generator(real_B)
+            img, edges = self.prepare_sequences(batch_size)
+            fake_edges = self.generator(img)
 
             #  Train Generator
             for param in self.discriminator.parameters():
@@ -53,10 +53,10 @@ class GAN:
 
             self.optimizer_g.zero_grad()
 
-            pred_fake = self.discriminator(fake_A, real_B)
+            pred_fake = self.discriminator(fake_edges, img)
 
             loss_mse = self.loss_mse(pred_fake, valid).double()
-            loss_l1 = self.loss_l1(fake_A, real_A).double()
+            loss_l1 = self.loss_l1(fake_edges, edges).double()
 
             # Total loss (100 is weight of L1 loss)
             loss_G = loss_mse + (100 * loss_l1)
@@ -71,11 +71,11 @@ class GAN:
             self.optimizer_d.zero_grad()
 
             # Real loss
-            pred_real = self.discriminator(real_A, real_B)
+            pred_real = self.discriminator(edges, img)
             loss_real = self.loss_mse(pred_real, valid)
 
             # Fake loss
-            pred_fake = self.discriminator(fake_A.detach(), real_B)
+            pred_fake = self.discriminator(fake_edges.detach(), img)
             loss_fake = self.loss_mse(pred_fake, fake)
 
             # Total loss
@@ -104,9 +104,9 @@ class GAN:
         imaging_data = []
         mask_data = []
 
-        for _, (imaging, mask) in enumerate(self.data_loader.load_batch(batch_size)):
+        for _, (imaging, edges) in enumerate(self.data_loader.load_batch(batch_size)):
             imaging_data.append(imaging[0])
-            mask_data.append(mask[0])
+            mask_data.append(edges[0])
 
         return tensor(imaging_data, device=self.device).float(), tensor(mask_data, device=self.device).float()
 
@@ -117,15 +117,15 @@ class GAN:
         :return Coverage of users by drones.
         """
 
-        imaging, mask = self.prepare_sequences()
-        fake = self.generator(mask)
+        imaging, edges = self.prepare_sequences()
+        fake = self.generator(imaging)
 
         fake = fake.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
         imaging = imaging.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
-        mask = mask.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
+        edges = edges.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
 
         # visualize trained data and store them
-        self.data_loader.save_data(epoch, mask, imaging, fake)
+        self.data_loader.save_data(epoch, edges, imaging, fake)
 
     def generate_samples(self, samples: int):
         """
@@ -134,14 +134,14 @@ class GAN:
         """
         for i in range(samples):
             print(f"LOGGER: Generating sample {i + 1}/{samples}.")
-            imaging, mask = self.prepare_sequences()
-            fake = self.generator(mask)
+            imaging, edges = self.prepare_sequences()
+            fake = self.generator(imaging)
 
             fake = fake.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
             imaging = imaging.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
-            mask = mask.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
+            edges = edges.detach().cpu().numpy().reshape(self.file_rows, self.file_cols, self.channels)
 
-            self.data_loader.save_data(i, mask, imaging, fake)
+            self.data_loader.save_data(i, edges, imaging, fake)
 
     def save_models(self, models: list):
         """
@@ -209,5 +209,5 @@ class GAN:
 
 if __name__ == '__main__':
     model = GAN()
-    # model.train(20000, 4, 100)
-    model.transform_weights("C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\gan\\20_04_2022_16_29")
+    model.train(20000, 4, 100)
+    # model.transform_weights("C:\\Users\\David\\PycharmProjects\\KITS2021\\models\\gan\\08_05_2022_18_19")
